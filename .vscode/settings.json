@@ -1,0 +1,11 @@
+{
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "name": "idk",
+            "database": "${workspaceFolder:rvsrg}/maps.db"
+        }
+    ],
+    "sqltools.useNodeRuntime": true
+}
