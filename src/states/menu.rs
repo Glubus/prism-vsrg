@@ -51,60 +51,73 @@ impl MenuStateController {
 }
 
 impl GameState for MenuStateController {
-    fn on_enter(&mut self, _ctx: &mut StateContext) {
+    fn on_enter(&mut self, ctx: &mut StateContext) {
         self.with_menu_state(|state| state.in_menu = true);
+        
+        // Réinitialiser le flag de chargement des scores pour forcer le rechargement
+        ctx.with_renderer(|renderer| {
+            renderer.leaderboard_scores_loaded = false;
+        });
     }
 
     fn handle_input(&mut self, event: &WindowEvent, ctx: &mut StateContext) -> StateTransition {
         if let WindowEvent::KeyboardInput {
             event:
                 KeyEvent {
-                    state: ElementState::Pressed,
+                    state,
                     physical_key: PhysicalKey::Code(key_code),
+                    repeat,
                     ..
                 },
             ..
         } = event
         {
-            match key_code {
-                KeyCode::Escape => {
-                    return StateTransition::Exit;
-                }
-                KeyCode::F8 => {
-                    self.trigger_rescan(ctx);
-                }
-                KeyCode::ArrowUp => {
-                    self.with_menu_state(|state| state.move_up());
-                }
-                KeyCode::ArrowDown => {
-                    self.with_menu_state(|state| state.move_down());
-                }
-                KeyCode::ArrowLeft => {
-                    self.with_menu_state(|state| state.previous_difficulty());
-                }
-                KeyCode::ArrowRight => {
-                    self.with_menu_state(|state| state.next_difficulty());
-                }
-                KeyCode::Enter | KeyCode::NumpadEnter => {
-                    if self.load_selected_map(ctx) {
-                        return StateTransition::Replace(Box::new(PlayStateController::new(
-                            Arc::clone(&self.menu_state),
-                        )));
+            if *repeat {
+                return StateTransition::None;
+            }
+
+            let key_code = *key_code;
+            if let ElementState::Pressed = state {
+                match key_code {
+                    KeyCode::Escape => {
+                        return StateTransition::Exit;
                     }
+                    KeyCode::F8 => {
+                        self.trigger_rescan(ctx);
+                    }
+                    KeyCode::ArrowUp => {
+                        self.with_menu_state(|state| state.move_up());
+                    }
+                    KeyCode::ArrowDown => {
+                        self.with_menu_state(|state| state.move_down());
+                    }
+                    KeyCode::ArrowLeft => {
+                        self.with_menu_state(|state| state.previous_difficulty());
+                    }
+                    KeyCode::ArrowRight => {
+                        self.with_menu_state(|state| state.next_difficulty());
+                    }
+                    KeyCode::Enter | KeyCode::NumpadEnter => {
+                        if self.load_selected_map(ctx) {
+                            return StateTransition::Replace(Box::new(PlayStateController::new(
+                                Arc::clone(&self.menu_state),
+                            )));
+                        }
+                    }
+                    KeyCode::PageUp => {
+                        self.with_menu_state(|state| {
+                            state.increase_rate();
+                            println!("Rate: {:.1}x", state.rate);
+                        });
+                    }
+                    KeyCode::PageDown => {
+                        self.with_menu_state(|state| {
+                            state.decrease_rate();
+                            println!("Rate: {:.1}x", state.rate);
+                        });
+                    }
+                    _ => {}
                 }
-                KeyCode::PageUp => {
-                    self.with_menu_state(|state| {
-                        state.increase_rate();
-                        println!("Rate: {:.1}x", state.rate);
-                    });
-                }
-                KeyCode::PageDown => {
-                    self.with_menu_state(|state| {
-                        state.decrease_rate();
-                        println!("Rate: {:.1}x", state.rate);
-                    });
-                }
-                _ => {}
             }
         }
         StateTransition::None

@@ -1,42 +1,7 @@
 use crate::database::models::{Beatmap, Beatmapset};
-use crate::views::components::card::CardDisplay;
-use bytemuck::{Pod, Zeroable};
+use crate::views::components::common::{QuadInstance, quad_from_rect};
+use crate::views::components::menu::card::CardDisplay;
 use wgpu_text::glyph_brush::{Section, Text};
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct QuadInstance {
-    pub center: [f32; 2],
-    pub size: [f32; 2],
-    pub color: [f32; 4],
-}
-
-fn screen_to_normalized(x: f32, y: f32, width: f32, height: f32) -> [f32; 2] {
-    [(x / width) * 2.0 - 1.0, -((y / height) * 2.0 - 1.0)]
-}
-
-fn create_quad(
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-    color: [f32; 4],
-    screen_width: f32,
-    screen_height: f32,
-) -> QuadInstance {
-    let center = screen_to_normalized(
-        x + width / 2.0,
-        y + height / 2.0,
-        screen_width,
-        screen_height,
-    );
-    let size = [(width / screen_width) * 2.0, (height / screen_height) * 2.0];
-    QuadInstance {
-        center,
-        size,
-        color,
-    }
-}
 
 pub struct MapListDisplay {
     pub cards: Vec<CardDisplay>,
@@ -63,7 +28,11 @@ impl MapListDisplay {
         let difficulty_row_spacing = 6.0;
         let detail_padding = 12.0;
         let width = card_width + 40.0;
-        let x = screen_width - width;
+        // Positionner le menu après le leaderboard (28% de l'écran + 20px de marge)
+        let leaderboard_width = screen_width * 0.28 + 20.0;
+        // Centrer le menu dans l'espace restant
+        let available_width = screen_width - leaderboard_width;
+        let x = leaderboard_width + (available_width - width) / 2.0;
         let y = 100.0;
 
         Self {
@@ -143,7 +112,7 @@ impl MapListDisplay {
         };
         let total_height = cards_height + spacing_total + 40.0;
 
-        quads.push(create_quad(
+        quads.push(quad_from_rect(
             self.x,
             self.y - 20.0,
             self.width,
@@ -154,7 +123,7 @@ impl MapListDisplay {
         ));
 
         for card in &self.cards {
-            quads.push(create_quad(
+            quads.push(quad_from_rect(
                 card.x,
                 card.y,
                 card.width,
@@ -173,7 +142,7 @@ impl MapListDisplay {
                     } else {
                         [0.1, 0.1, 0.1, 0.9]
                     };
-                    quads.push(create_quad(
+                    quads.push(quad_from_rect(
                         card.x + 10.0,
                         row_y,
                         row_width,
@@ -289,6 +258,10 @@ impl MapListDisplay {
         self.screen_width = screen_width;
         self.screen_height = screen_height;
         self.width = self.card_width + 40.0;
-        self.x = screen_width - self.width;
+        // Positionner le menu après le leaderboard (28% de l'écran + 20px de marge)
+        let leaderboard_width = screen_width * 0.28 + 20.0;
+        // Centrer le menu dans l'espace restant
+        let available_width = screen_width - leaderboard_width;
+        self.x = leaderboard_width + (available_width - self.width) / 2.0;
     }
 }

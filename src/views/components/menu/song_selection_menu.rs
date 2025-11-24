@@ -1,14 +1,15 @@
 use crate::models::menu::MenuState;
-use crate::views::components::map_list::MapListDisplay;
+use crate::views::components::menu::map_list::MapListDisplay;
+use bytemuck::cast_slice;
 use std::sync::{Arc, Mutex};
 use wgpu::{Buffer, Device, Queue, RenderPipeline, SurfaceError, TextureView};
 use wgpu_text::TextBrush;
-use bytemuck::cast_slice;
 
 pub struct SongSelectionDisplay {
     map_list: MapListDisplay,
     screen_width: f32,
     screen_height: f32,
+    last_snapshot: Option<MenuSnapshot>,
 }
 
 impl SongSelectionDisplay {
@@ -17,6 +18,7 @@ impl SongSelectionDisplay {
             map_list: MapListDisplay::new(screen_width, screen_height),
             screen_width,
             screen_height,
+            last_snapshot: None,
         }
     }
 
@@ -27,21 +29,46 @@ impl SongSelectionDisplay {
     }
 
     pub fn update(&mut self, menu_state: &Arc<Mutex<MenuState>>) {
-        let (visible_items, selected_index, selected_difficulty_index) = {
-            let menu_state_guard = menu_state.lock().unwrap();
-            let visible_items = menu_state_guard.get_visible_items();
-            (
-                visible_items
-                    .iter()
-                    .map(|(bs, bms)| (bs.clone(), bms.clone()))
-                    .collect::<Vec<_>>(),
-                menu_state_guard.get_relative_selected_index(),
-                menu_state_guard.selected_difficulty_index,
-            )
+        let (needs_update, snapshot, visible_items, selected_index, selected_difficulty_index) = {
+            if let Ok(menu_state_guard) = menu_state.lock() {
+                let visible_slice = menu_state_guard.get_visible_items();
+                let selected_index = menu_state_guard.get_relative_selected_index();
+                let selected_difficulty_index = menu_state_guard.selected_difficulty_index;
+
+                let snapshot = MenuSnapshot {
+                    visible_ids: visible_slice
+                        .iter()
+                        .map(|(beatmapset, beatmaps)| (beatmapset.id, beatmaps.len()))
+                        .collect(),
+                    selected_index,
+                    selected_difficulty_index,
+                };
+
+                if self.last_snapshot.as_ref() == Some(&snapshot) {
+                    (false, snapshot, Vec::new(), selected_index, selected_difficulty_index)
+                } else {
+                    let cloned_items = visible_slice
+                        .iter()
+                        .map(|(bs, bms)| (bs.clone(), bms.clone()))
+                        .collect::<Vec<_>>();
+                    (true, snapshot, cloned_items, selected_index, selected_difficulty_index)
+                }
+            } else {
+                (
+                    false,
+                    MenuSnapshot::default(),
+                    Vec::new(),
+                    0,
+                    0,
+                )
+            }
         };
 
-        self.map_list
-            .update_cards(&visible_items, selected_index, selected_difficulty_index);
+        if needs_update {
+            self.map_list
+                .update_cards(&visible_items, selected_index, selected_difficulty_index);
+            self.last_snapshot = Some(snapshot);
+        }
     }
 
     pub fn render(
@@ -199,3 +226,9 @@ impl SongSelectionDisplay {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct MenuSnapshot {
+    visible_ids: Vec<(i64, usize)>,
+    selected_index: usize,
+    selected_difficulty_index: usize,
+}

@@ -1,6 +1,8 @@
 use crate::database::connection::Database;
 use crate::database::query::{insert_beatmap, insert_beatmapset};
+use md5::Context;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 /// Scanne le dossier songs/ et remplit la base de données
@@ -81,6 +83,15 @@ pub async fn scan_songs_directory(
 
                 // Insérer toutes les beatmaps
                 for osu_file in &osu_files {
+                    // Calculer le hash MD5 du fichier .osu
+                    let hash = match calculate_file_hash(osu_file) {
+                        Ok(h) => h,
+                        Err(e) => {
+                            eprintln!("Error calculating hash for {:?}: {}", osu_file, e);
+                            continue;
+                        }
+                    }; 
+
                     match rosu_map::Beatmap::from_path(osu_file) {
                         Ok(bm) => {
                             // Compter les notes (seulement les circles pour l'instant)
@@ -101,6 +112,7 @@ pub async fn scan_songs_directory(
                                 if let Err(e) = insert_beatmap(
                                     db.pool(),
                                     beatmapset_id,
+                                    &hash,
                                     osu_str,
                                     Some(&difficulty_name),
                                     note_count,
@@ -136,4 +148,18 @@ fn find_background_image(beatmapset_path: &Path, filename: Option<&str>) -> Opti
             None
         }
     })
+}
+
+/// Calcule le hash MD5 d'un fichier .osu
+fn calculate_file_hash(file_path: &Path) -> Result<String, std::io::Error> {
+    let mut file = fs::File::open(file_path)?;
+    let mut buffer = String::new();
+    file.read_to_string(&mut buffer)?;
+    
+    let mut context = Context::new();
+    context.consume(buffer.as_bytes());
+    let result = context.finalize();
+    let hash_string = format!("{:x}", result);
+    
+    Ok(hash_string)
 }

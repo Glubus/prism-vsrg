@@ -27,12 +27,12 @@ impl HitWindow {
     /// Retourne `Self` au lieu d'un tuple.
     pub fn from_osu_od(od: f64) -> Self {
         Self {
-            marv_ms: 16.0,                      // Fixe (selon ton code précédent)
-            perfect_ms: 64.0 - (3.0 * od),      // 300
-            great_ms: 97.0 - (3.0 * od),        // 100
-            good_ms: 127.0 - (3.0 * od),        // 50
-            bad_ms: 151.0 - (3.0 * od),         // (Approximation Bad)
-            miss_ms: 188.0 - (3.0 * od),        // (Seuil Miss)
+            marv_ms: 16.0,                 // Fixe (selon ton code précédent)
+            perfect_ms: 64.0 - (3.0 * od), // 300
+            great_ms: 97.0 - (3.0 * od),   // 100
+            good_ms: 127.0 - (3.0 * od),   // 50
+            bad_ms: 151.0 - (3.0 * od),    // (Approximation Bad)
+            miss_ms: 188.0 - (3.0 * od),   // (Seuil Miss)
         }
     }
 
@@ -49,7 +49,7 @@ impl HitWindow {
         let base_great = 90.0;
         let base_good = 135.0;
         let base_bad = 180.0;
-        
+
         // Règle spéciale Etterna : Bad ne descend jamais sous 180ms
         let bad_calculated = (base_bad * scale).max(180.0);
 
@@ -64,9 +64,7 @@ impl HitWindow {
     }
 
     /// Constructeur utilitaire pour des valeurs custom complètes
-    pub fn from_custom(
-        marv: f64, perf: f64, great: f64, good: f64, bad: f64, miss: f64
-    ) -> Self {
+    pub fn from_custom(marv: f64, perf: f64, great: f64, good: f64, bad: f64, miss: f64) -> Self {
         Self {
             marv_ms: marv,
             perfect_ms: perf,

@@ -46,7 +46,7 @@ impl Database {
 
     /// Initialise les tables si elles n'existent pas
     async fn init_schema(&self) -> Result<(), sqlx::Error> {
-        // Table beatmapset
+        // Table beatmapset (on garde l'id pour la compatibilité avec les relations)
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS beatmapset (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,15 +59,31 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
-        // Table beatmap
+        // Table beatmap - hash MD5 comme clé primaire
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS beatmap (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                hash TEXT PRIMARY KEY,
                 beatmapset_id INTEGER NOT NULL,
                 path TEXT NOT NULL UNIQUE,
                 difficulty_name TEXT,
                 note_count INTEGER NOT NULL,
                 FOREIGN KEY (beatmapset_id) REFERENCES beatmapset(id) ON DELETE CASCADE
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // Table replay
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS replay (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                beatmap_hash TEXT NOT NULL,
+                timestamp INTEGER NOT NULL,
+                score INTEGER NOT NULL,
+                accuracy REAL NOT NULL,
+                max_combo INTEGER NOT NULL,
+                data TEXT NOT NULL,
+                FOREIGN KEY (beatmap_hash) REFERENCES beatmap(hash) ON DELETE CASCADE
             )",
         )
         .execute(&self.pool)
@@ -101,11 +117,12 @@ impl Database {
     pub async fn insert_beatmap(
         &self,
         beatmapset_id: i64,
+        hash: &str,
         path: &str,
         difficulty_name: Option<&str>,
         note_count: i32,
-    ) -> Result<i64, sqlx::Error> {
-        query::insert_beatmap(&self.pool, beatmapset_id, path, difficulty_name, note_count).await
+    ) -> Result<String, sqlx::Error> {
+        query::insert_beatmap(&self.pool, beatmapset_id, hash, path, difficulty_name, note_count).await
     }
 
     /// Récupère tous les beatmapsets avec leurs beatmaps
@@ -118,5 +135,34 @@ impl Database {
     /// Compte le nombre total de beatmapsets
     pub async fn count_beatmapsets(&self) -> Result<i32, sqlx::Error> {
         query::count_beatmapsets(&self.pool).await
+    }
+
+    /// Insère un replay
+    pub async fn insert_replay(
+        &self,
+        beatmap_hash: &str,
+        timestamp: i64,
+        score: i32,
+        accuracy: f64,
+        max_combo: i32,
+        data: &str,
+    ) -> Result<i64, sqlx::Error> {
+        query::insert_replay(&self.pool, beatmap_hash, timestamp, score, accuracy, max_combo, data).await
+    }
+
+    /// Récupère tous les replays pour une beatmap
+    pub async fn get_replays_for_beatmap(
+        &self,
+        beatmap_hash: &str,
+    ) -> Result<Vec<crate::database::models::Replay>, sqlx::Error> {
+        query::get_replays_for_beatmap(&self.pool, beatmap_hash).await
+    }
+
+    /// Récupère les meilleurs scores par accuracy
+    pub async fn get_top_scores(
+        &self,
+        limit: i32,
+    ) -> Result<Vec<crate::database::models::Replay>, sqlx::Error> {
+        query::get_top_scores(&self.pool, limit).await
     }
 }

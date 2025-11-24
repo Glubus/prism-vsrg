@@ -6,5 +6,5 @@ pub mod scanner;
 
 pub use connection::Database;
 pub use manager::{DbCommand, DbManager, DbState, DbStatus};
-pub use models::{Beatmap, Beatmapset};
+pub use models::{Beatmap, Beatmapset, Replay};
 pub use scanner::scan_songs_directory;

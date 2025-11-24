@@ -11,6 +11,7 @@ pub struct MenuState {
     pub selected_difficulty_index: usize,
     pub visible_count: usize,
     pub in_menu: bool,
+    pub show_result: bool,
     pub rate: f64,
 }
 
@@ -24,6 +25,7 @@ impl MenuState {
             selected_difficulty_index: 0,
             visible_count: 10,
             in_menu: true,
+            show_result: false,
             rate: 1.0,
         }
     }
@@ -153,4 +155,3 @@ impl MenuState {
         })
     }
 }
-

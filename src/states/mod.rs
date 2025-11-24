@@ -1,8 +1,10 @@
 mod menu;
 mod play;
+mod result;
 
 pub use menu::MenuStateController;
 pub use play::PlayStateController;
+pub use result::ResultStateController;
 
 use crate::database::DbManager;
 use crate::renderer::Renderer;

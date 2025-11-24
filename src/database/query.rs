@@ -1,8 +1,9 @@
-use crate::database::models::{Beatmap, Beatmapset};
+use crate::database::models::{Beatmap, Beatmapset, Replay};
 use sqlx::SqlitePool;
 
 /// Vide toutes les tables (pour rescan)
 pub async fn clear_all(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM replay").execute(pool).await?;
     sqlx::query("DELETE FROM beatmap").execute(pool).await?;
     sqlx::query("DELETE FROM beatmapset").execute(pool).await?;
     Ok(())
@@ -56,42 +57,45 @@ pub async fn insert_beatmapset(
 pub async fn insert_beatmap(
     pool: &SqlitePool,
     beatmapset_id: i64,
+    hash: &str,
     path: &str,
     difficulty_name: Option<&str>,
     note_count: i32,
-) -> Result<i64, sqlx::Error> {
-    // Vérifier si la beatmap existe déjà
-    let existing: Option<i64> = sqlx::query_scalar("SELECT id FROM beatmap WHERE path = ?1")
-        .bind(path)
+) -> Result<String, sqlx::Error> {
+    // Vérifier si la beatmap existe déjà par hash
+    let existing: Option<String> = sqlx::query_scalar("SELECT hash FROM beatmap WHERE hash = ?1")
+        .bind(hash)
         .fetch_optional(pool)
         .await?;
 
     match existing {
-        Some(id) => {
+        Some(existing_hash) => {
             // Mettre à jour
             sqlx::query(
-                "UPDATE beatmap SET beatmapset_id = ?1, difficulty_name = ?2, note_count = ?3 WHERE id = ?4"
+                "UPDATE beatmap SET beatmapset_id = ?1, path = ?2, difficulty_name = ?3, note_count = ?4 WHERE hash = ?5"
             )
             .bind(beatmapset_id)
+            .bind(path)
             .bind(difficulty_name)
             .bind(note_count)
-            .bind(id)
+            .bind(&existing_hash)
             .execute(pool)
             .await?;
-            Ok(id)
+            Ok(existing_hash)
         }
         None => {
             // Insérer
-            let result = sqlx::query(
-                "INSERT INTO beatmap (beatmapset_id, path, difficulty_name, note_count) VALUES (?1, ?2, ?3, ?4)"
+            sqlx::query(
+                "INSERT INTO beatmap (hash, beatmapset_id, path, difficulty_name, note_count) VALUES (?1, ?2, ?3, ?4, ?5)"
             )
+            .bind(hash)
             .bind(beatmapset_id)
             .bind(path)
             .bind(difficulty_name)
             .bind(note_count)
             .execute(pool)
             .await?;
-            Ok(result.last_insert_rowid())
+            Ok(hash.to_string())
         }
     }
 }
@@ -109,7 +113,7 @@ pub async fn get_all_beatmapsets(
     let mut result = Vec::new();
     for beatmapset in beatmapsets {
         let beatmaps: Vec<Beatmap> = sqlx::query_as(
-            "SELECT id, beatmapset_id, path, difficulty_name, note_count FROM beatmap WHERE beatmapset_id = ?1 ORDER BY difficulty_name"
+            "SELECT hash, beatmapset_id, path, difficulty_name, note_count FROM beatmap WHERE beatmapset_id = ?1 ORDER BY difficulty_name"
         )
         .bind(beatmapset.id)
         .fetch_all(pool)
@@ -127,4 +131,56 @@ pub async fn count_beatmapsets(pool: &SqlitePool) -> Result<i32, sqlx::Error> {
         .fetch_optional(pool)
         .await?;
     Ok(count.unwrap_or(0) as i32)
+}
+
+/// Insère un replay
+pub async fn insert_replay(
+    pool: &SqlitePool,
+    beatmap_hash: &str,
+    timestamp: i64,
+    score: i32,
+    accuracy: f64,
+    max_combo: i32,
+    data: &str,
+) -> Result<i64, sqlx::Error> {
+    let result = sqlx::query(
+        "INSERT INTO replay (beatmap_hash, timestamp, score, accuracy, max_combo, data) VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
+    )
+    .bind(beatmap_hash)
+    .bind(timestamp)
+    .bind(score)
+    .bind(accuracy)
+    .bind(max_combo)
+    .bind(data)
+    .execute(pool)
+    .await?;
+    Ok(result.last_insert_rowid())
+}
+
+/// Récupère tous les replays pour une beatmap
+pub async fn get_replays_for_beatmap(
+    pool: &SqlitePool,
+    beatmap_hash: &str,
+) -> Result<Vec<Replay>, sqlx::Error> {
+    let replays: Vec<Replay> = sqlx::query_as(
+        "SELECT id, beatmap_hash, timestamp, score, accuracy, max_combo, data FROM replay WHERE beatmap_hash = ?1 ORDER BY timestamp DESC"
+    )
+    .bind(beatmap_hash)
+    .fetch_all(pool)
+    .await?;
+    Ok(replays)
+}
+
+/// Récupère les 10 meilleurs scores par accuracy (toutes beatmaps confondues)
+pub async fn get_top_scores(
+    pool: &SqlitePool,
+    limit: i32,
+) -> Result<Vec<Replay>, sqlx::Error> {
+    let replays: Vec<Replay> = sqlx::query_as(
+        "SELECT id, beatmap_hash, timestamp, score, accuracy, max_combo, data FROM replay ORDER BY accuracy DESC, timestamp DESC LIMIT ?1"
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(replays)
 }

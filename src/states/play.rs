@@ -1,4 +1,4 @@
-use super::{GameState, MenuStateController, StateContext, StateTransition};
+use super::{GameState, MenuStateController, ResultStateController, StateContext, StateTransition};
 use crate::models::menu::MenuState;
 use std::sync::{Arc, Mutex};
 use winit::event::{ElementState, KeyEvent, WindowEvent};
@@ -90,6 +90,38 @@ impl GameState for PlayStateController {
                         }
                     });
                 }
+            }
+        }
+        StateTransition::None
+    }
+
+    fn update(&mut self, ctx: &mut StateContext) -> StateTransition {
+        // Vérifier si la partie est terminée
+        let game_finished = ctx.with_renderer(|renderer| {
+            renderer.engine.is_game_finished()
+        }).unwrap_or(false);
+
+        if game_finished {
+            // Récupérer les stats et le replay avant de passer à l'écran de résultats
+            if let Some((hit_stats, replay_data, score, accuracy, max_combo)) = ctx.with_renderer(|renderer| {
+                let hit_stats = renderer.engine.hit_stats.clone();
+                let replay_data = renderer.engine.replay_data.clone();
+                let score = renderer.engine.notes_passed;
+                let accuracy = hit_stats.calculate_accuracy();
+                let max_combo = renderer.engine.max_combo;
+                (hit_stats, replay_data, score, accuracy, max_combo)
+            }) {
+                // Arrêter l'audio
+                ctx.with_renderer(|renderer| renderer.stop_audio());
+                
+                return StateTransition::Replace(Box::new(ResultStateController::new(
+                    Arc::clone(&self.menu_state),
+                    hit_stats,
+                    replay_data,
+                    score,
+                    accuracy,
+                    max_combo,
+                )));
             }
         }
         StateTransition::None

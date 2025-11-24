@@ -487,4 +487,3 @@ fn build_keymap(config: &SkinConfig, max_columns: usize) -> HashMap<String, usiz
     }
     key_to_column
 }
-

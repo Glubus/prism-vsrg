@@ -34,6 +34,7 @@ pub enum Judgement {
     GhostTap,
 }
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct HitStats {
     pub marv: u32,
     pub perfect: u32,

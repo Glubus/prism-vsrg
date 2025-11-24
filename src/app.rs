@@ -5,8 +5,9 @@ use crate::states::{GameState, MenuStateController, StateContext, StateTransitio
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
+use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
+use winit::keyboard::{KeyCode, PhysicalKey, ModifiersState};
 use winit::window::{Window, WindowId};
 
 pub struct App {
@@ -16,12 +17,12 @@ pub struct App {
     db_state: Arc<Mutex<DbState>>,
     menu_state: Arc<Mutex<MenuState>>,
     state_stack: Vec<Box<dyn GameState>>,
+    modifiers: ModifiersState, // Pour traquer CTRL
 }
 
 impl App {
     pub fn new() -> Self {
-        // Créer le DbManager avec les chemins
-        let db_path = PathBuf::from("maps.db");
+        let db_path = PathBuf::from("main.db");
         let songs_path = PathBuf::from("songs");
         let db_manager = DbManager::new(db_path, songs_path);
         let db_state = db_manager.get_state();
@@ -34,6 +35,7 @@ impl App {
             db_state,
             menu_state: Arc::clone(&menu_state),
             state_stack: Vec::new(),
+            modifiers: ModifiersState::default(),
         };
 
         app.enter_state(Box::new(MenuStateController::new(menu_state)));
@@ -45,30 +47,26 @@ impl App {
     }
 
     fn update_menu_from_db_state(&mut self) {
-        // Mettre à jour le menu_state depuis le db_state
         let db_state_guard = self.db_state.lock().unwrap();
         let beatmapsets = db_state_guard.beatmapsets.clone();
         drop(db_state_guard);
 
         if let Ok(mut menu_state) = self.menu_state.lock() {
             let lengths_differ = menu_state.beatmapsets.len() != beatmapsets.len();
-            let structure_changed =
-                if lengths_differ {
-                    true
-                } else {
-                    menu_state.beatmapsets.iter().zip(beatmapsets.iter()).any(
-                        |(current, updated)| {
-                            current.0.id != updated.0.id || current.1.len() != updated.1.len()
-                        },
-                    )
-                };
+            let structure_changed = if lengths_differ {
+                true
+            } else {
+                menu_state.beatmapsets.iter().zip(beatmapsets.iter()).any(
+                    |(current, updated)| {
+                        current.0.id != updated.0.id || current.1.len() != updated.1.len()
+                    },
+                )
+            };
 
             if structure_changed {
                 let old_selected = menu_state.selected_index;
                 let old_diff = menu_state.selected_difficulty_index;
                 menu_state.beatmapsets = beatmapsets;
-
-                // Réinitialiser les index de scroll
                 menu_state.start_index = 0;
                 menu_state.end_index = menu_state.visible_count.min(menu_state.beatmapsets.len());
 
@@ -149,25 +147,20 @@ impl App {
 }
 
 impl ApplicationHandler for App {
-    // Appelé quand l'app démarre ou redémarre (Android/iOS/Desktop)
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_none() {
-            // Initialiser la base de données
             self.init_database();
-
             let win_attr = winit::window::Window::default_attributes()
                 .with_title("rVsrg - Rust Vertical Scroll Rhythm Game");
 
             let window = Arc::new(event_loop.create_window(win_attr).unwrap());
             self.window = Some(window.clone());
 
-            // Init WGPU (Async bloquant pour l'exemple, ou utiliser spawn local)
             let menu_state_for_renderer = Arc::clone(&self.menu_state);
             let renderer =
                 pollster::block_on(Renderer::new(window.clone(), menu_state_for_renderer));
             self.renderer = Some(renderer);
 
-            // Redemander une frame pour démarrer la boucle
             if let Some(window) = &self.window {
                 window.request_redraw();
             }
@@ -180,9 +173,35 @@ impl ApplicationHandler for App {
         _window_id: WindowId,
         event: WindowEvent,
     ) {
-        // Mettre à jour le menu depuis le db_state à chaque frame
         self.update_menu_from_db_state();
 
+        // 1. Gestion EGUI (Inputs Souris/Clavier UI)
+        if let (Some(renderer), Some(window)) = (self.renderer.as_mut(), self.window.as_ref()) {
+            // On passe l'événement à egui
+            renderer.handle_event(window, &event);
+
+            // Si egui veut l'input (ex: on tape dans une textbox ou on clique sur une fenêtre),
+            // on ne propage pas l'événement au jeu.
+            // Note: wants_keyboard_input renvoie true si le focus est dans un widget texte
+            // wants_pointer_input renvoie true si la souris est sur une fenêtre egui
+            let egui_wants_keyboard = renderer.egui_ctx.wants_keyboard_input();
+            let egui_wants_pointer = renderer.egui_ctx.wants_pointer_input();
+
+            // Si c'est un input clavier et qu'egui le veut, on return
+            if let WindowEvent::KeyboardInput { .. } = event {
+                if egui_wants_keyboard {
+                    return; 
+                }
+            }
+            // Idem pour la souris
+            if let WindowEvent::CursorMoved { .. } | WindowEvent::MouseInput { .. } = event {
+                if egui_wants_pointer {
+                    return;
+                }
+            }
+        }
+
+        // 2. Traitement des événements globaux
         match &event {
             WindowEvent::CloseRequested => {
                 println!("Shutdown requested...");
@@ -193,6 +212,41 @@ impl ApplicationHandler for App {
                     renderer.resize(*physical_size);
                 }
             }
+            WindowEvent::ModifiersChanged(new_modifiers) => {
+                self.modifiers = new_modifiers.state();
+            }
+            WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        state: ElementState::Pressed,
+                        physical_key: PhysicalKey::Code(key_code),
+                        repeat: false,
+                        ..
+                    },
+                ..
+            } => {
+                // Gestion Raccourcis Globaux (Settings)
+                if *key_code == KeyCode::KeyO && self.modifiers.control_key() {
+                    let allow_toggle = self
+                        .menu_state
+                        .lock()
+                        .map(|state| state.in_menu)
+                        .unwrap_or(true);
+                    if allow_toggle {
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.toggle_settings();
+                    }
+                    // On return pour ne pas que le 'O' soit aussi traité par le jeu (optionnel)
+                    return;
+                    }
+                    // En gameplay, Ctrl+O est ignoré pour éviter des collisions de raccourcis
+                }
+
+                // Propagation au jeu (States)
+                let transition =
+                    self.with_active_state(|state, ctx| state.handle_input(&event, ctx));
+                self.apply_transition(transition, event_loop);
+            }
             WindowEvent::RedrawRequested => {
                 let transition = self.with_active_state(|state, ctx| match state.update(ctx) {
                     StateTransition::None => state.render(ctx),
@@ -200,8 +254,9 @@ impl ApplicationHandler for App {
                 });
                 self.apply_transition(transition, event_loop);
 
-                if let Some(renderer) = self.renderer.as_mut() {
-                    match renderer.render() {
+                if let (Some(renderer), Some(window)) = (self.renderer.as_mut(), self.window.as_ref()) {
+                    // On passe la window au render
+                    match renderer.render(window) {
                         Ok(_) => {}
                         Err(wgpu::SurfaceError::Lost) => {
                             // TODO: Reconfigure surface
@@ -209,17 +264,17 @@ impl ApplicationHandler for App {
                         Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
                         Err(e) => eprintln!("{:?}", e),
                     }
-                    if let Some(window) = &self.window {
-                        window.request_redraw();
-                    }
+                    window.request_redraw();
                 }
             }
-            WindowEvent::KeyboardInput { .. } => {
-                let transition =
-                    self.with_active_state(|state, ctx| state.handle_input(&event, ctx));
-                self.apply_transition(transition, event_loop);
+            _ => {
+                // Pour les autres events clavier (release, repeat)
+                if let WindowEvent::KeyboardInput { .. } = event {
+                     let transition =
+                        self.with_active_state(|state, ctx| state.handle_input(&event, ctx));
+                    self.apply_transition(transition, event_loop);
+                }
             }
-            _ => {}
         }
     }
 }
