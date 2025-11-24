@@ -1,13 +1,13 @@
-use std::sync::{Arc, Mutex};
-use std::path::PathBuf;
-use winit::application::ApplicationHandler;
-use winit::event::{WindowEvent, ElementState, KeyEvent};
-use winit::event_loop::ActiveEventLoop;
-use winit::window::{Window, WindowId};
-use winit::keyboard::{KeyCode, PhysicalKey};
-use crate::renderer::Renderer;
 use crate::database::{DbManager, DbState};
 use crate::menu::MenuState;
+use crate::renderer::Renderer;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use winit::application::ApplicationHandler;
+use winit::event::{ElementState, KeyEvent, WindowEvent};
+use winit::event_loop::ActiveEventLoop;
+use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::window::{Window, WindowId};
 
 /// Convertit un KeyCode en nom de string pour le mapping
 fn keycode_to_string(key_code: KeyCode) -> String {
@@ -29,9 +29,9 @@ impl App {
         let songs_path = PathBuf::from("songs");
         let db_manager = DbManager::new(db_path, songs_path);
         let db_state = db_manager.get_state();
-        
-        Self { 
-            window: None, 
+
+        Self {
+            window: None,
             renderer: None,
             db_manager: Some(db_manager),
             db_state,
@@ -50,28 +50,47 @@ impl App {
             db_manager.rescan();
         }
     }
-    
+
     fn update_menu_from_db_state(&mut self) {
         // Mettre à jour le menu_state depuis le db_state
         let db_state_guard = self.db_state.lock().unwrap();
         let beatmapsets = db_state_guard.beatmapsets.clone();
         drop(db_state_guard);
-        
+
         if let Ok(mut menu_state) = self.menu_state.lock() {
-            // Ne mettre à jour que si les beatmapsets ont changé
-            if menu_state.beatmapsets.len() != beatmapsets.len() {
+            let lengths_differ = menu_state.beatmapsets.len() != beatmapsets.len();
+            let structure_changed =
+                if lengths_differ {
+                    true
+                } else {
+                    menu_state.beatmapsets.iter().zip(beatmapsets.iter()).any(
+                        |(current, updated)| {
+                            current.0.id != updated.0.id || current.1.len() != updated.1.len()
+                        },
+                    )
+                };
+
+            if structure_changed {
                 let old_selected = menu_state.selected_index;
+                let old_diff = menu_state.selected_difficulty_index;
                 menu_state.beatmapsets = beatmapsets;
-                
+
                 // Réinitialiser les index de scroll
                 menu_state.start_index = 0;
                 menu_state.end_index = menu_state.visible_count.min(menu_state.beatmapsets.len());
-                
-                // Garder l'index sélectionné dans les limites
+
                 if menu_state.beatmapsets.is_empty() {
                     menu_state.selected_index = 0;
+                    menu_state.selected_difficulty_index = 0;
                 } else {
                     menu_state.selected_index = old_selected.min(menu_state.beatmapsets.len() - 1);
+                    let current_beatmap_count = menu_state
+                        .beatmapsets
+                        .get(menu_state.selected_index)
+                        .map(|(_, beatmaps)| beatmaps.len())
+                        .unwrap_or(1)
+                        .max(1);
+                    menu_state.selected_difficulty_index = old_diff.min(current_beatmap_count - 1);
                 }
             }
         }
@@ -87,21 +106,27 @@ impl ApplicationHandler for App {
 
             let win_attr = winit::window::Window::default_attributes()
                 .with_title("rVsrg - Rust Vertical Scroll Rhythm Game");
-            
+
             let window = Arc::new(event_loop.create_window(win_attr).unwrap());
             self.window = Some(window.clone());
 
             // Init WGPU (Async bloquant pour l'exemple, ou utiliser spawn local)
             let menu_state_for_renderer = Arc::clone(&self.menu_state);
-            let renderer = pollster::block_on(Renderer::new(window.clone(), menu_state_for_renderer));
+            let renderer =
+                pollster::block_on(Renderer::new(window.clone(), menu_state_for_renderer));
             self.renderer = Some(renderer);
         }
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
         // Mettre à jour le menu depuis le db_state à chaque frame
         self.update_menu_from_db_state();
-        
+
         match event {
             WindowEvent::CloseRequested => {
                 println!("Shutdown requested...");
@@ -126,7 +151,15 @@ impl ApplicationHandler for App {
                     self.window.as_ref().unwrap().request_redraw();
                 }
             }
-            WindowEvent::KeyboardInput { event: KeyEvent { state: ElementState::Pressed, physical_key: PhysicalKey::Code(key_code), .. }, .. } => {
+            WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        state: ElementState::Pressed,
+                        physical_key: PhysicalKey::Code(key_code),
+                        ..
+                    },
+                ..
+            } => {
                 // Vérifier si on est dans le menu
                 let in_menu = {
                     if let Some(renderer) = &self.renderer {
@@ -139,7 +172,7 @@ impl ApplicationHandler for App {
                         false
                     }
                 };
-                
+
                 if in_menu {
                     match key_code {
                         KeyCode::Escape => {
@@ -164,6 +197,20 @@ impl ApplicationHandler for App {
                                 }
                             }
                         }
+                        KeyCode::ArrowLeft => {
+                            if let Some(renderer) = &self.renderer {
+                                if let Ok(mut menu_state) = renderer.menu_state.lock() {
+                                    menu_state.previous_difficulty();
+                                }
+                            }
+                        }
+                        KeyCode::ArrowRight => {
+                            if let Some(renderer) = &self.renderer {
+                                if let Ok(mut menu_state) = renderer.menu_state.lock() {
+                                    menu_state.next_difficulty();
+                                }
+                            }
+                        }
                         KeyCode::Enter | KeyCode::NumpadEnter => {
                             // Charger la map sélectionnée
                             if let Some(renderer) = &mut self.renderer {
@@ -174,7 +221,7 @@ impl ApplicationHandler for App {
                                         None
                                     }
                                 };
-                                
+
                                 if let Some(path) = map_path {
                                     if let Ok(mut menu_state) = renderer.menu_state.lock() {
                                         menu_state.in_menu = false;
@@ -220,14 +267,16 @@ impl ApplicationHandler for App {
                     KeyCode::F3 => {
                         // Diminuer la vitesse de défilement
                         if let Some(renderer) = &mut self.renderer {
-                            renderer.engine.scroll_speed_ms = (renderer.engine.scroll_speed_ms - 50.0).max(100.0);
+                            renderer.engine.scroll_speed_ms =
+                                (renderer.engine.scroll_speed_ms - 50.0).max(100.0);
                             println!("Scroll speed: {:.1} ms", renderer.engine.scroll_speed_ms);
                         }
                     }
                     KeyCode::F4 => {
                         // Augmenter la vitesse de défilement
                         if let Some(renderer) = &mut self.renderer {
-                            renderer.engine.scroll_speed_ms = (renderer.engine.scroll_speed_ms + 50.0).min(2000.0);
+                            renderer.engine.scroll_speed_ms =
+                                (renderer.engine.scroll_speed_ms + 50.0).min(2000.0);
                             println!("Scroll speed: {:.1} ms", renderer.engine.scroll_speed_ms);
                         }
                     }
@@ -260,7 +309,10 @@ impl ApplicationHandler for App {
                             let key_name = keycode_to_string(key_code);
                             if let Some(column) = renderer.skin.get_column_for_key(&key_name) {
                                 if let Some(judgement) = renderer.engine.process_input(column) {
-                                    println!("Hit column {} ({}): {:?}", column, key_name, judgement);
+                                    println!(
+                                        "Hit column {} ({}): {:?}",
+                                        column, key_name, judgement
+                                    );
                                 }
                             }
                         }

@@ -1,19 +1,22 @@
+use crate::components::{
+    AccuracyComponent, ComboComponent, HitBar, JudgementComponent, JudgementsComponent,
+    PlayfieldComponent, ScoreComponent,
+};
+use crate::engine::{GameEngine, InstanceRaw, PixelSystem, PlayfieldConfig};
+use crate::menu::MenuState;
+use crate::playfield::Playfield;
+use crate::skin::Skin;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use std::path::PathBuf;
-use winit::window::Window;
-use crate::engine::{GameEngine, InstanceRaw, PixelSystem, PlayfieldConfig};
-use crate::playfield::Playfield;
-use crate::components::{HitBar, PlayfieldComponent, ScoreComponent, AccuracyComponent, JudgementsComponent, ComboComponent, JudgementComponent};
-use crate::skin::Skin;
-use crate::menu::MenuState;
 use wgpu_text::TextBrush;
+use winit::window::Window;
 
-use super::texture::{load_texture_from_path, create_default_texture};
-use super::pipeline::{create_bind_group_layout, create_sampler, create_render_pipeline};
-use super::text::load_text_brush;
-use super::menu::render_menu as render_menu_impl;
 use super::gameplay::render_gameplay as render_gameplay_impl;
+use super::menu::render_menu as render_menu_impl;
+use super::pipeline::{create_bind_group_layout, create_render_pipeline, create_sampler};
+use super::text::load_text_brush;
+use super::texture::{create_default_texture, load_texture_from_path};
 
 pub struct Renderer {
     surface: wgpu::Surface<'static>,
@@ -58,23 +61,44 @@ impl Renderer {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let surface = instance.create_surface(window.clone()).unwrap();
 
-        let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: Some(&surface),
-            force_fallback_adapter: false,
-        }).await.unwrap();
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+            })
+            .await
+            .unwrap();
 
-        let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor::default()).await.unwrap();
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor::default())
+            .await
+            .unwrap();
 
         let surface_caps = surface.get_capabilities(&adapter);
-        let surface_format = surface_caps.formats.iter().copied().find(|f| f.is_srgb()).unwrap_or(surface_caps.formats[0]);
+        let surface_format = surface_caps
+            .formats
+            .iter()
+            .copied()
+            .find(|f| f.is_srgb())
+            .unwrap_or(surface_caps.formats[0]);
+        let preferred_present_modes = [
+            wgpu::PresentMode::Immediate,
+            wgpu::PresentMode::Mailbox,
+            wgpu::PresentMode::FifoRelaxed,
+            wgpu::PresentMode::Fifo,
+        ];
+        let present_mode = preferred_present_modes
+            .into_iter()
+            .find(|mode| surface_caps.present_modes.contains(mode))
+            .unwrap_or(surface_caps.present_modes[0]);
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
             width: size.width,
             height: size.height,
-            present_mode: wgpu::PresentMode::Immediate,
+            present_mode,
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
@@ -85,14 +109,16 @@ impl Renderer {
         if let Err(e) = crate::skin::init_skin_structure() {
             eprintln!("Warning: Failed to initialize skin structure: {}", e);
         }
-        
+
         // Charger le skin par défaut
         let num_columns = crate::engine::NUM_COLUMNS;
-        let skin_temp = Skin::load_default(num_columns)
-            .unwrap_or_else(|e| {
-                eprintln!("Warning: Failed to load default skin: {}. Using fallback.", e);
-                Self::create_fallback_skin()
-            });
+        let skin_temp = Skin::load_default(num_columns).unwrap_or_else(|e| {
+            eprintln!(
+                "Warning: Failed to load default skin: {}. Using fallback.",
+                e
+            );
+            Self::create_fallback_skin()
+        });
 
         // Créer le bind group layout et le sampler
         let bind_group_layout = create_bind_group_layout(&device);
@@ -106,30 +132,49 @@ impl Renderer {
             (receptor_color[2] * 255.0) as u8,
             (receptor_color[3] * 255.0) as u8,
         ];
-        
+
         let mut receptor_bind_groups = Vec::new();
         for col in 0..num_columns {
             let receptor_texture = if let Some(path) = skin_temp.get_receptor_path(col) {
                 load_texture_from_path(&device, &queue, &path)
                     .map(|(tex, _, _)| tex)
-                    .unwrap_or_else(|| create_default_texture(&device, &queue, receptor_default_color, &format!("Receptor {} Default", col)))
+                    .unwrap_or_else(|| {
+                        create_default_texture(
+                            &device,
+                            &queue,
+                            receptor_default_color,
+                            &format!("Receptor {} Default", col),
+                        )
+                    })
             } else {
-                create_default_texture(&device, &queue, receptor_default_color, &format!("Receptor {} Default", col))
+                create_default_texture(
+                    &device,
+                    &queue,
+                    receptor_default_color,
+                    &format!("Receptor {} Default", col),
+                )
             };
-            
-            let receptor_texture_view = receptor_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+            let receptor_texture_view =
+                receptor_texture.create_view(&wgpu::TextureViewDescriptor::default());
             let receptor_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some(&format!("Receptor Bind Group {}", col)),
                 layout: &bind_group_layout,
                 entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&receptor_texture_view) },
-                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&receptor_texture_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&sampler),
+                    },
                 ],
             });
-            
+
             receptor_bind_groups.push(receptor_bind_group);
         }
-        
+
         // Charger les textures pour les notes
         let note_color = skin_temp.get_note_color();
         let note_default_color = [
@@ -138,27 +183,46 @@ impl Renderer {
             (note_color[2] * 255.0) as u8,
             (note_color[3] * 255.0) as u8,
         ];
-        
+
         let mut note_bind_groups = Vec::new();
         for col in 0..num_columns {
             let note_texture = if let Some(path) = skin_temp.get_note_path(col) {
                 load_texture_from_path(&device, &queue, &path)
                     .map(|(tex, _, _)| tex)
-                    .unwrap_or_else(|| create_default_texture(&device, &queue, note_default_color, &format!("Note {} Default", col)))
+                    .unwrap_or_else(|| {
+                        create_default_texture(
+                            &device,
+                            &queue,
+                            note_default_color,
+                            &format!("Note {} Default", col),
+                        )
+                    })
             } else {
-                create_default_texture(&device, &queue, note_default_color, &format!("Note {} Default", col))
+                create_default_texture(
+                    &device,
+                    &queue,
+                    note_default_color,
+                    &format!("Note {} Default", col),
+                )
             };
-            
-            let note_texture_view = note_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+            let note_texture_view =
+                note_texture.create_view(&wgpu::TextureViewDescriptor::default());
             let note_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some(&format!("Note Bind Group {}", col)),
                 layout: &bind_group_layout,
                 entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&note_texture_view) },
-                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&note_texture_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&sampler),
+                    },
                 ],
             });
-            
+
             note_bind_groups.push(note_bind_group);
         }
 
@@ -170,15 +234,18 @@ impl Renderer {
         let background_bind_group_layout = create_bind_group_layout(&device);
         let background_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Background Shader"),
-            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!("../background_shader.wgsl"))),
+            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!(
+                "../background_shader.wgsl"
+            ))),
         });
-        
-        let background_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Background Pipeline Layout"),
-            bind_group_layouts: &[&background_bind_group_layout],
-            push_constant_ranges: &[],
-        });
-        
+
+        let background_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Background Pipeline Layout"),
+                bind_group_layouts: &[&background_bind_group_layout],
+                push_constant_ranges: &[],
+            });
+
         let background_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             cache: None,
             label: Some("Background Render Pipeline"),
@@ -225,7 +292,9 @@ impl Renderer {
         // Créer le pipeline pour les quads colorés (panels, cards)
         let quad_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Quad Shader"),
-            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!("../quad_shader.wgsl"))),
+            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!(
+                "../quad_shader.wgsl"
+            ))),
         });
 
         let quad_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -237,9 +306,9 @@ impl Renderer {
         #[repr(C)]
         #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
         struct QuadInstance {
-            center: [f32; 2],  // Centre du quad en coordonnées normalisées [-1, 1]
-            size: [f32; 2],     // Taille du quad en coordonnées normalisées
-            color: [f32; 4],    // Couleur RGBA
+            center: [f32; 2], // Centre du quad en coordonnées normalisées [-1, 1]
+            size: [f32; 2],   // Taille du quad en coordonnées normalisées
+            color: [f32; 4],  // Couleur RGBA
         }
 
         let quad_vertex_layout = wgpu::VertexBufferLayout {
@@ -257,7 +326,8 @@ impl Renderer {
                     format: wgpu::VertexFormat::Float32x2,
                 },
                 wgpu::VertexAttribute {
-                    offset: (std::mem::size_of::<[f32; 2]>() + std::mem::size_of::<[f32; 2]>()) as wgpu::BufferAddress,
+                    offset: (std::mem::size_of::<[f32; 2]>() + std::mem::size_of::<[f32; 2]>())
+                        as wgpu::BufferAddress,
                     shader_location: 2,
                     format: wgpu::VertexFormat::Float32x4,
                 },
@@ -308,20 +378,24 @@ impl Renderer {
             if skin_font_path.exists() {
                 skin_font_path
             } else {
-                eprintln!("Skin font not found at {:?}, using fallback", skin_font_path);
+                eprintln!(
+                    "Skin font not found at {:?}, using fallback",
+                    skin_font_path
+                );
                 PathBuf::from("assets/font.ttf")
             }
         } else {
             eprintln!("No font configured in skin, using fallback");
             PathBuf::from("assets/font.ttf")
         };
-        
-        let text_brush = load_text_brush(&device, size.width, size.height, config.format, &font_path);
+
+        let text_brush =
+            load_text_brush(&device, size.width, size.height, config.format, &font_path);
 
         let pixel_system = PixelSystem::new(size.width, size.height);
         let playfield_config = PlayfieldConfig::new();
         let judgement_colors = skin.get_judgement_colors();
-        
+
         // Calculer les positions des components
         let screen_width = size.width as f32;
         let screen_height = size.height as f32;
@@ -329,7 +403,9 @@ impl Renderer {
         let (_playfield_x, _playfield_width) = playfield_component.get_bounds(&pixel_system);
         let playfield_screen_width = _playfield_width * screen_height / 2.0;
         let playfield_center_x = screen_width / 2.0;
-        let left_x = ((screen_width / 2.0) - playfield_screen_width - (screen_width * 0.15).min(200.0)).max(20.0);
+        let left_x =
+            ((screen_width / 2.0) - playfield_screen_width - (screen_width * 0.15).min(200.0))
+                .max(20.0);
         let playfield_right_x = playfield_center_x + (playfield_screen_width / 2.0);
         let score_x = playfield_right_x + 20.0;
         let hit_line_y_screen = screen_height / 2.0;
@@ -360,11 +436,20 @@ impl Renderer {
             pixel_system,
             playfield,
             skin,
-            hit_bar: HitBar::new(playfield_center_x - hitbar_width / 2.0, hitbar_y, hitbar_width, 20.0),
+            hit_bar: HitBar::new(
+                playfield_center_x - hitbar_width / 2.0,
+                hitbar_y,
+                hitbar_width,
+                20.0,
+            ),
             playfield_component,
             score_component: ScoreComponent::new(score_x, screen_height * 0.05),
             accuracy_component: AccuracyComponent::new(left_x, screen_height * 0.1),
-            judgements_component: JudgementsComponent::new(left_x, screen_height * 0.15, judgement_colors),
+            judgements_component: JudgementsComponent::new(
+                left_x,
+                screen_height * 0.15,
+                judgement_colors,
+            ),
             combo_component: ComboComponent::new(playfield_center_x, combo_y),
             judgement_component: JudgementComponent::new(playfield_center_x, judgement_y),
             menu_state,
@@ -382,7 +467,8 @@ impl Renderer {
     fn update_menu_background(&mut self) {
         let selected_beatmapset = {
             if let Ok(menu_state) = self.menu_state.lock() {
-                menu_state.get_selected_beatmapset()
+                menu_state
+                    .get_selected_beatmapset()
                     .and_then(|(bs, _)| bs.image_path.as_ref().map(|s| s.clone()))
             } else {
                 None
@@ -393,22 +479,34 @@ impl Renderer {
             // Vérifier si le background a changé
             if self.current_background_path.as_ref() != Some(&image_path) {
                 self.current_background_path = Some(image_path.clone());
-                
+
                 // Charger la nouvelle texture
                 let path = std::path::Path::new(&image_path);
                 if path.exists() {
-                    if let Some((texture, _, _)) = load_texture_from_path(&self.device, &self.queue, path) {
-                        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+                    if let Some((texture, _, _)) =
+                        load_texture_from_path(&self.device, &self.queue, path)
+                    {
+                        let texture_view =
+                            texture.create_view(&wgpu::TextureViewDescriptor::default());
                         let bind_group_layout = create_bind_group_layout(&self.device);
-                        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                            label: Some("Background Bind Group"),
-                            layout: &bind_group_layout,
-                            entries: &[
-                                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&texture_view) },
-                                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&self.background_sampler) },
-                            ],
-                        });
-                        
+                        let bind_group =
+                            self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                                label: Some("Background Bind Group"),
+                                layout: &bind_group_layout,
+                                entries: &[
+                                    wgpu::BindGroupEntry {
+                                        binding: 0,
+                                        resource: wgpu::BindingResource::TextureView(&texture_view),
+                                    },
+                                    wgpu::BindGroupEntry {
+                                        binding: 1,
+                                        resource: wgpu::BindingResource::Sampler(
+                                            &self.background_sampler,
+                                        ),
+                                    },
+                                ],
+                            });
+
                         self.background_texture = Some(texture);
                         self.background_bind_group = Some(bind_group);
                     }
@@ -439,13 +537,27 @@ impl Renderer {
                 },
                 images: crate::skin::ImagePaths {
                     receptor: None,
-                    receptor_0: None, receptor_1: None, receptor_2: None, receptor_3: None,
-                    receptor_4: None, receptor_5: None, receptor_6: None, receptor_7: None,
-                    receptor_8: None, receptor_9: None,
+                    receptor_0: None,
+                    receptor_1: None,
+                    receptor_2: None,
+                    receptor_3: None,
+                    receptor_4: None,
+                    receptor_5: None,
+                    receptor_6: None,
+                    receptor_7: None,
+                    receptor_8: None,
+                    receptor_9: None,
                     note: None,
-                    note_0: None, note_1: None, note_2: None, note_3: None,
-                    note_4: None, note_5: None, note_6: None, note_7: None,
-                    note_8: None, note_9: None,
+                    note_0: None,
+                    note_1: None,
+                    note_2: None,
+                    note_3: None,
+                    note_4: None,
+                    note_5: None,
+                    note_6: None,
+                    note_7: None,
+                    note_8: None,
+                    note_9: None,
                     miss_note: None,
                     background: None,
                 },
@@ -475,7 +587,7 @@ impl Renderer {
             }
         };
         self.engine = GameEngine::from_map(map_path, rate);
-        
+
         // Rate is already applied in from_map via sink.set_speed()
     }
 
@@ -503,20 +615,25 @@ impl Renderer {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
-            self.text_brush.resize_view(new_size.width as f32, new_size.height as f32, &self.queue);
-            self.pixel_system.update_size(new_size.width, new_size.height);
+            self.text_brush
+                .resize_view(new_size.width as f32, new_size.height as f32, &self.queue);
+            self.pixel_system
+                .update_size(new_size.width, new_size.height);
             self.update_component_positions();
         }
     }
-    
+
     fn update_component_positions(&mut self) {
         let screen_width = self.config.width as f32;
         let screen_height = self.config.height as f32;
-        
-        let (_playfield_x, _playfield_width) = self.playfield_component.get_bounds(&self.pixel_system);
+
+        let (_playfield_x, _playfield_width) =
+            self.playfield_component.get_bounds(&self.pixel_system);
         let playfield_screen_width = _playfield_width * screen_height / 2.0;
         let playfield_center_x = screen_width / 2.0;
-        let left_x = ((screen_width / 2.0) - playfield_screen_width - (screen_width * 0.15).min(200.0)).max(20.0);
+        let left_x =
+            ((screen_width / 2.0) - playfield_screen_width - (screen_width * 0.15).min(200.0))
+                .max(20.0);
         let playfield_right_x = playfield_center_x + (playfield_screen_width / 2.0);
         let score_x = playfield_right_x + 20.0;
         let hit_line_y_screen = screen_height / 2.0;
@@ -524,7 +641,7 @@ impl Renderer {
         let judgement_y = combo_y + 30.0;
         let hitbar_y = combo_y + 60.0;
         let hitbar_width = playfield_screen_width * 0.8;
-        
+
         self.combo_component.x_pixels = playfield_center_x;
         self.combo_component.y_pixels = combo_y;
         self.judgement_component.x_pixels = playfield_center_x;
@@ -542,7 +659,9 @@ impl Renderer {
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
         let in_menu = {
             if let Ok(menu_state) = self.menu_state.lock() {
@@ -551,11 +670,11 @@ impl Renderer {
                 false
             }
         };
-        
+
         if in_menu {
             // Mettre à jour le background si nécessaire
             self.update_menu_background();
-            
+
             // Calcul des FPS pour le menu
             self.frame_count += 1;
             let now = Instant::now();
@@ -565,7 +684,7 @@ impl Renderer {
                 self.frame_count = 0;
                 self.last_fps_update = now;
             }
-            
+
             render_menu_impl(
                 &self.device,
                 &self.queue,
@@ -581,7 +700,11 @@ impl Renderer {
                 &self.quad_buffer,
             )?;
 
-            self.queue.submit(std::iter::once(self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default()).finish()));
+            self.queue.submit(std::iter::once(
+                self.device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor::default())
+                    .finish(),
+            ));
             output.present();
             return Ok(());
         }

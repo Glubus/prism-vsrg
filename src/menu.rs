@@ -1,4 +1,4 @@
-use crate::database::{Database, Beatmapset, Beatmap};
+use crate::database::{Beatmap, Beatmapset, Database};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -8,6 +8,7 @@ pub struct MenuState {
     pub start_index: usize, // Index de début du scroll (premier item visible)
     pub end_index: usize,   // Index de fin du scroll (dernier item visible)
     pub selected_index: usize, // Index absolu dans toute la liste
+    pub selected_difficulty_index: usize, // Index de la difficulté sélectionnée dans le beatmapset
     pub visible_count: usize, // Nombre d'items visibles à l'écran
     pub in_menu: bool,
     pub rate: f64, // Rate multiplier (1.0 = normal speed, 1.5 = 1.5x speed, etc.)
@@ -20,6 +21,7 @@ impl MenuState {
             start_index: 0,
             end_index: 0,
             selected_index: 0,
+            selected_difficulty_index: 0,
             visible_count: 10, // Afficher 10 items visibles à l'écran
             in_menu: true,
             rate: 1.0, // Default rate: normal speed
@@ -34,11 +36,15 @@ impl MenuState {
         self.rate = (self.rate - 0.1).max(0.5); // Min 0.5x speed
     }
 
-    pub async fn load_from_db(menu_state: Arc<Mutex<Self>>, db: &Database) -> Result<(), sqlx::Error> {
+    pub async fn load_from_db(
+        menu_state: Arc<Mutex<Self>>,
+        db: &Database,
+    ) -> Result<(), sqlx::Error> {
         let beatmapsets = db.get_all_beatmapsets().await?;
         if let Ok(mut state) = menu_state.lock() {
             state.beatmapsets = beatmapsets.clone();
             state.selected_index = 0;
+            state.selected_difficulty_index = 0;
             // Initialiser les index de scroll
             state.end_index = state.visible_count.min(state.beatmapsets.len());
             state.start_index = 0;
@@ -60,7 +66,9 @@ impl MenuState {
         if self.selected_index < self.start_index {
             0
         } else if self.selected_index >= self.end_index {
-            self.end_index.saturating_sub(self.start_index).saturating_sub(1)
+            self.end_index
+                .saturating_sub(self.start_index)
+                .saturating_sub(1)
         } else {
             self.selected_index - self.start_index
         }
@@ -70,14 +78,16 @@ impl MenuState {
         if self.beatmapsets.is_empty() {
             return;
         }
-        
+
         if self.selected_index > 0 {
             self.selected_index -= 1;
-            
+            self.selected_difficulty_index = 0;
+
             // Si l'item sélectionné est en dehors de la fenêtre visible, ajuster le scroll
             if self.selected_index < self.start_index {
                 self.start_index = self.selected_index;
-                self.end_index = (self.start_index + self.visible_count).min(self.beatmapsets.len());
+                self.end_index =
+                    (self.start_index + self.visible_count).min(self.beatmapsets.len());
             }
         }
     }
@@ -86,10 +96,11 @@ impl MenuState {
         if self.beatmapsets.is_empty() {
             return;
         }
-        
+
         if self.selected_index < self.beatmapsets.len() - 1 {
             self.selected_index += 1;
-            
+            self.selected_difficulty_index = 0;
+
             // Si l'item sélectionné est en dehors de la fenêtre visible, ajuster le scroll
             if self.selected_index >= self.end_index {
                 self.end_index = (self.selected_index + 1).min(self.beatmapsets.len());
@@ -103,9 +114,47 @@ impl MenuState {
     }
 
     pub fn get_selected_beatmap_path(&self) -> Option<PathBuf> {
-        self.get_selected_beatmapset()
-            .and_then(|(_, beatmaps)| beatmaps.first())
-            .map(|bm| PathBuf::from(&bm.path))
+        self.get_selected_beatmapset().and_then(|(_, beatmaps)| {
+            beatmaps
+                .get(
+                    self.selected_difficulty_index
+                        .min(beatmaps.len().saturating_sub(1)),
+                )
+                .map(|bm| PathBuf::from(&bm.path))
+        })
+    }
+
+    pub fn next_difficulty(&mut self) {
+        if let Some((_, beatmaps)) = self.get_selected_beatmapset() {
+            if beatmaps.is_empty() {
+                self.selected_difficulty_index = 0;
+            } else {
+                self.selected_difficulty_index =
+                    (self.selected_difficulty_index + 1) % beatmaps.len();
+            }
+        }
+    }
+
+    pub fn previous_difficulty(&mut self) {
+        if let Some((_, beatmaps)) = self.get_selected_beatmapset() {
+            if beatmaps.is_empty() {
+                self.selected_difficulty_index = 0;
+            } else if self.selected_difficulty_index == 0 {
+                self.selected_difficulty_index = beatmaps.len() - 1;
+            } else {
+                self.selected_difficulty_index -= 1;
+            }
+        }
+    }
+
+    pub fn get_selected_difficulty_name(&self) -> Option<String> {
+        self.get_selected_beatmapset().and_then(|(_, beatmaps)| {
+            beatmaps
+                .get(
+                    self.selected_difficulty_index
+                        .min(beatmaps.len().saturating_sub(1)),
+                )
+                .and_then(|bm| bm.difficulty_name.clone())
+        })
     }
 }
-
