@@ -1,29 +1,30 @@
 use egui::{Color32, ScrollArea};
 
-use crate::models::stats::HitStats;
+use crate::models::replay::ReplayData;
+use crate::models::engine::hit_window::HitWindow;
 use crate::views::components::menu::song_select::leaderboard_card::LeaderboardCard;
 
 #[derive(Clone)]
 pub struct ScoreCard {
-    pub accuracy: f64,
     pub timestamp: i64,
     pub rate: f64,
-    pub hit_stats: HitStats,
+    pub replay_data: ReplayData,
+    pub total_notes: usize, // Nombre total de notes dans la map
 }
 
 impl ScoreCard {
-    pub fn from_replay(replay: &crate::database::models::Replay) -> Option<Self> {
-        let hit_stats = if let Ok(replay_data) = serde_json::from_str::<crate::models::replay::ReplayData>(&replay.data) {
-            replay_data.hit_stats.unwrap_or_else(HitStats::new)
+    pub fn from_replay(replay: &crate::database::models::Replay, total_notes: usize) -> Option<Self> {
+        let replay_data = if let Ok(data) = serde_json::from_str::<ReplayData>(&replay.data) {
+            data
         } else {
-            HitStats::new()
+            ReplayData::new()
         };
         
         Some(ScoreCard {
-            accuracy: replay.accuracy,
             timestamp: replay.timestamp,
             rate: replay.rate,
-            hit_stats,
+            replay_data,
+            total_notes,
         })
     }
 }
@@ -43,7 +44,7 @@ impl Leaderboard {
         self.scores = scores;
     }
 
-    pub fn render(&self, ui: &mut egui::Ui) {
+    pub fn render(&self, ui: &mut egui::Ui, _difficulty_name: Option<&str>, hit_window: &HitWindow) {
         egui::Frame::default()
             .corner_radius(5.0)
             .outer_margin(10.0)
@@ -65,13 +66,20 @@ impl Leaderboard {
                         .auto_shrink([false; 2])
                         .show(ui, |ui| {
                             for (i, card) in self.scores.iter().take(10).enumerate() {
+                                // Recalculer avec la hit window actuelle
+                                let (hit_stats, accuracy) = crate::models::replay::recalculate_accuracy_with_hit_window(
+                                    &card.replay_data,
+                                    card.total_notes,
+                                    hit_window,
+                                );
+                                
                                 LeaderboardCard::render(
                                     ui,
                                     i,
-                                    card.accuracy,
+                                    accuracy,
                                     card.rate,
                                     card.timestamp,
-                                    &card.hit_stats,
+                                    &hit_stats,
                                 );
                                 
                                 if i < self.scores.len().min(10).saturating_sub(1) {

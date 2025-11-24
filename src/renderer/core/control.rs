@@ -4,6 +4,7 @@ use crate::renderer::pipeline::create_bind_group_layout;
 use crate::renderer::texture::load_texture_from_path;
 use std::path::PathBuf;
 use winit::event::WindowEvent;
+use sqlx;
 
 impl Renderer {
     pub fn update_menu_background(&mut self) {
@@ -147,18 +148,44 @@ impl Renderer {
             let db_path = std::path::PathBuf::from("main.db");
             
             if let Ok(db) = rt.block_on(crate::database::connection::Database::new(&db_path)) {
-                let scores = if let Some(hash) = &selected_hash {
+                let (scores, note_count_map) = if let Some(hash) = &selected_hash {
                     // Charger les scores pour la map spécifique
-                    rt.block_on(crate::database::query::get_replays_for_beatmap(db.pool(), hash))
-                        .unwrap_or_else(|_| Vec::new())
+                    let replays = rt.block_on(crate::database::query::get_replays_for_beatmap(db.pool(), hash))
+                        .unwrap_or_else(|_| Vec::new());
+                    
+                    // Récupérer le note_count de la beatmap
+                    let note_count = rt.block_on(
+                        sqlx::query_scalar::<_, i32>("SELECT note_count FROM beatmap WHERE hash = ?1")
+                            .bind(hash)
+                            .fetch_optional(db.pool())
+                    ).ok().flatten().unwrap_or(0);
+                    
+                    let mut note_count_map = std::collections::HashMap::new();
+                    note_count_map.insert(hash.clone(), note_count);
+                    (replays, note_count_map)
                 } else {
                     // Pas de map sélectionnée, charger les top scores globaux
-                    rt.block_on(crate::database::query::get_top_scores(db.pool(), 10))
-                        .unwrap_or_else(|_| Vec::new())
+                    let replays = rt.block_on(crate::database::query::get_top_scores(db.pool(), 10))
+                        .unwrap_or_else(|_| Vec::new());
+                    
+                    // Récupérer les note_count pour toutes les beatmaps concernées
+                    let mut note_count_map = std::collections::HashMap::new();
+                    for replay in &replays {
+                        if !note_count_map.contains_key(&replay.beatmap_hash) {
+                            if let Ok(Some(note_count)) = rt.block_on(
+                                sqlx::query_scalar::<_, i32>("SELECT note_count FROM beatmap WHERE hash = ?1")
+                                    .bind(&replay.beatmap_hash)
+                                    .fetch_optional(db.pool())
+                            ) {
+                                note_count_map.insert(replay.beatmap_hash.clone(), note_count);
+                            }
+                        }
+                    }
+                    (replays, note_count_map)
                 };
 
                 if let Some(ref mut song_select) = self.song_select_screen {
-                    song_select.update_leaderboard(scores);
+                    song_select.update_leaderboard(scores, note_count_map);
                     song_select.set_current_beatmap_hash(selected_hash.clone());
                 }
                 self.leaderboard_scores_loaded = true;

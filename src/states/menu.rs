@@ -128,13 +128,11 @@ impl GameState for MenuStateController {
                     KeyCode::PageUp => {
                         self.with_menu_state(|state| {
                             state.increase_rate();
-                            println!("Rate: {:.1}x", state.rate);
                         });
                     }
                     KeyCode::PageDown => {
                         self.with_menu_state(|state| {
                             state.decrease_rate();
-                            println!("Rate: {:.1}x", state.rate);
                         });
                     }
                     _ => {}

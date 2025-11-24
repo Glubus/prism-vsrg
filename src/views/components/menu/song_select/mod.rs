@@ -3,6 +3,7 @@ pub(super) mod leaderboard_card;
 pub(super) mod song_list;
 pub(super) mod song_card;
 pub(super) mod difficulty_card;
+pub(super) mod beatmap_info;
 
 use std::sync::{Arc, Mutex};
 
@@ -16,6 +17,7 @@ use wgpu::TextureView;
 use crate::models::menu::MenuState;
 use crate::views::components::menu::song_select::leaderboard::{Leaderboard, ScoreCard};
 use crate::views::components::menu::song_select::song_list::SongList;
+use crate::views::components::menu::song_select::beatmap_info::BeatmapInfo;
 
 pub struct CurrentBackground {
     pub image: DynamicImage,
@@ -26,6 +28,7 @@ pub struct SongSelectScreen {
     menu_state: Arc<Mutex<MenuState>>,
     song_list: SongList,
     leaderboard: Leaderboard,
+    beatmap_info: BeatmapInfo,
     current_background_image: Option<CurrentBackground>,
     current_beatmap_hash: Option<String>,
 }
@@ -36,6 +39,7 @@ impl SongSelectScreen {
             menu_state: Arc::clone(&menu_state),
             song_list: SongList::new(Arc::clone(&menu_state)),
             leaderboard: Leaderboard::new(),
+            beatmap_info: BeatmapInfo::new(),
             current_background_image: None,
             current_beatmap_hash: None,
         }
@@ -67,10 +71,13 @@ impl SongSelectScreen {
         });
     }
 
-    pub fn update_leaderboard(&mut self, replays: Vec<crate::database::models::Replay>) {
+    pub fn update_leaderboard(&mut self, replays: Vec<crate::database::models::Replay>, note_count_map: std::collections::HashMap<String, i32>) {
         let scores: Vec<ScoreCard> = replays
             .iter()
-            .filter_map(|r| ScoreCard::from_replay(r))
+            .filter_map(|r| {
+                let total_notes = note_count_map.get(&r.beatmap_hash).copied().unwrap_or(0) as usize;
+                ScoreCard::from_replay(r, total_notes)
+            })
             .collect();
         self.leaderboard.update_scores(scores);
     }
@@ -90,6 +97,9 @@ impl SongSelectScreen {
         _view: &TextureView,
         screen_width: f32,
         screen_height: f32,
+        hit_window: &crate::models::engine::hit_window::HitWindow,
+        hit_window_mode: crate::models::settings::HitWindowMode,
+        hit_window_value: f64,
     ) {
         // Update current selection from menu_state
         if let Ok(state) = self.menu_state.lock() {
@@ -103,9 +113,31 @@ impl SongSelectScreen {
                     .size(Size::relative(0.25)) // Leaderboard on left
                     .size(Size::relative(0.75)) // Song select on right
                     .horizontal(|mut strip| {
-                        // Leaderboard panel
+                        // Left panel (Beatmap info + Leaderboard)
                         strip.cell(|ui| {
-                            self.leaderboard.render(ui);
+                            // Get selected beatmap data
+                            let (beatmapset, beatmap, rate, diff_name) = {
+                                if let Ok(state) = self.menu_state.lock() {
+                                    if let Some((bs, beatmaps)) = state.beatmapsets.get(state.selected_index) {
+                                        let bm = beatmaps.get(state.selected_difficulty_index);
+                                        let diff_name = bm.and_then(|bm| bm.difficulty_name.clone());
+                                        (Some(bs.clone()), bm.cloned(), state.rate, diff_name)
+                                    } else {
+                                        (None, None, 1.0, None)
+                                    }
+                                } else {
+                                    (None, None, 1.0, None)
+                                }
+                            };
+                            
+                            // Display beatmap info if we have data
+                            if let Some(bs) = &beatmapset {
+                                self.beatmap_info.render(ui, bs, beatmap.as_ref(), rate, hit_window_mode, hit_window_value);
+                                ui.add_space(10.0);
+                            }
+                            
+                            // Leaderboard avec le nom de la difficulté et la hit window actuelle
+                            self.leaderboard.render(ui, diff_name.as_deref(), hit_window);
                         });
 
                         // Song select panel

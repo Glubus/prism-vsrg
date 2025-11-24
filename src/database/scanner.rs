@@ -15,7 +15,6 @@ pub async fn scan_songs_directory(
         return Ok(());
     }
 
-    println!("Scanning maps in {:?}...", songs_path);
 
     // Parcourir tous les dossiers dans songs/
     let entries = fs::read_dir(songs_path)?;
@@ -135,7 +134,6 @@ pub async fn scan_songs_directory(
         }
     }
 
-    println!("Scan completed!");
     Ok(())
 }
 

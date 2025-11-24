@@ -1,6 +1,7 @@
 use super::Renderer;
 use crate::views::context::{GameplayRenderContext, ResultRenderContext};
-use std::{collections::BTreeMap, sync::Arc, time::Instant};
+use crate::models::engine::NUM_COLUMNS;
+use std::{sync::Arc, time::Instant};
 use wgpu::CommandEncoderDescriptor;
 
 impl Renderer {
@@ -13,25 +14,49 @@ impl Renderer {
         // On récupère les inputs et on construit l'UI
         let raw_input = self.egui_state.take_egui_input(window);
         
+        // Capturer les événements de clavier bruts pour le remappage
+        let mut captured_key: Option<String> = None;
+        if self.settings.remapping_column.is_some() {
+            // D'abord, chercher les événements Text (caractères réels pour AZERTY)
+            for event in &raw_input.events {
+                if let egui::Event::Text(text) = event {
+                    if !text.is_empty() {
+                        // Prendre le premier caractère
+                        captured_key = Some(text.chars().next().unwrap().to_string());
+                        break;
+                    }
+                }
+            }
+            // Si aucun caractère n'a été capturé, chercher les touches spéciales
+            if captured_key.is_none() {
+                for event in &raw_input.events {
+                    if let egui::Event::Key { key, pressed: true, .. } = event {
+                        captured_key = Some(key.name().to_string());
+                        break;
+                    }
+                }
+            }
+        }
+        
         // Extraction des données nécessaires pour l'UI avant la closure
         let mut settings_is_open = self.settings.is_open;
         let mut settings_show_keybindings = self.settings.show_keybindings;
+        let mut remapping_column = self.settings.remapping_column;
         let mut master_volume = self.settings.master_volume;
         let mut hit_window_mode = self.settings.hit_window_mode;
         let mut hit_window_value = self.settings.hit_window_value;
-        let keybinding_rows = {
-            let mut grouped: BTreeMap<usize, Vec<String>> = BTreeMap::new();
-            for (key, column) in &self.skin.key_to_column {
-                grouped.entry(*column).or_default().push(key.clone());
-            }
-            grouped
-                .into_iter()
-                .map(|(column, mut keys)| {
-                    keys.sort();
-                    (column, keys)
-                })
-                .collect::<Vec<_>>()
-        };
+        // Créer une liste de toutes les colonnes avec leur touche (une seule par colonne)
+        let keybinding_rows: Vec<(usize, String)> = (0..NUM_COLUMNS)
+            .map(|col| {
+                // Trouver la première touche assignée à cette colonne
+                let key = self.skin.key_to_column
+                    .iter()
+                    .find(|(_, c)| **c == col)
+                    .map(|(k, _)| k.clone())
+                    .unwrap_or_else(|| "None".to_string());
+                (col, key)
+            })
+            .collect();
         
         // Initialize song select screen if needed
         let (in_menu, show_result) = if let Ok(menu_state) = self.menu_state.lock() {
@@ -49,19 +74,32 @@ impl Renderer {
         let full_output = self.egui_ctx.run(raw_input, |ctx| {
             // Construction de l'UI directement dans la closure pour éviter les problèmes de borrow
             
-            // Render song select if in menu and settings not open
-            if in_menu && !settings_is_open {
+            // Render song select if in menu and not showing result screen
+            if in_menu && !show_result {
+                // Créer la hit window actuelle depuis les settings
+                let current_hit_window = match hit_window_mode {
+                    crate::models::settings::HitWindowMode::OsuOD => {
+                        crate::models::engine::hit_window::HitWindow::from_osu_od(hit_window_value)
+                    }
+                    crate::models::settings::HitWindowMode::EtternaJudge => {
+                        crate::models::engine::hit_window::HitWindow::from_etterna_judge(hit_window_value as u8)
+                    }
+                };
+                
                 if let Some(ref mut song_select) = self.song_select_screen {
                     song_select.render(
                         ctx,
                         &view,
                         self.config.width as f32,
                         self.config.height as f32,
+                        &current_hit_window,
+                        hit_window_mode,
+                        hit_window_value,
                     );
                 }
-                return;
             }
 
+            // Render settings on top if open
             if !settings_is_open {
                 return;
             }
@@ -150,23 +188,47 @@ impl Renderer {
                         if keybinding_rows.is_empty() {
                             ui.label("No key bindings declared in the current skin.");
                         } else {
-                            egui::Grid::new("keybinds_grid")
-                                .striped(true)
-                                .show(ui, |ui| {
-                                    for (column, keys) in keybinding_rows.iter() {
-                                        ui.label(format!("Column {}", column + 1));
-                                        let display = keys.join(", ");
-                                        if ui.button(&display).clicked() {
-                                            // TODO : logiques de remappage à implémenter
+                            // Capturer les touches si on est en mode remappage
+                            if let Some(col) = remapping_column {
+                                ui.label(format!("Press a key for Column {}...", col + 1));
+                                
+                                // Utiliser la touche capturée depuis les événements bruts
+                                if let Some(key_name) = &captured_key {
+                                    // Retirer toutes les touches de cette colonne (une seule touche par colonne)
+                                    self.skin.key_to_column.retain(|_, &mut c| c != col);
+                                    
+                                    // Retirer la touche des autres colonnes si elle y est assignée
+                                    self.skin.key_to_column.retain(|k, _| k != key_name);
+                                    
+                                    // Ajouter la nouvelle touche à cette colonne
+                                    self.skin.key_to_column.insert(key_name.clone(), col);
+                                    
+                                    remapping_column = None;
+                                }
+                                
+                                ui.add_space(10.0);
+                                if ui.button("Cancel").clicked() {
+                                    remapping_column = None;
+                                }
+                            } else {
+                                egui::Grid::new("keybinds_grid")
+                                    .striped(true)
+                                    .show(ui, |ui| {
+                                        for (column, key) in keybinding_rows.iter() {
+                                            ui.label(format!("Column {}", column + 1));
+                                            if ui.button(key).clicked() {
+                                                remapping_column = Some(*column);
+                                            }
+                                            ui.end_row();
                                         }
-                                        ui.end_row();
-                                    }
-                                });
+                                    });
+                            }
                         }
 
                         ui.add_space(10.0);
                         if ui.button("Done").clicked() {
                             settings_show_keybindings = false;
+                            remapping_column = None;
                         }
                     });
             }
@@ -175,6 +237,7 @@ impl Renderer {
         // Mise à jour des settings après la closure
         self.settings.is_open = settings_is_open;
         self.settings.show_keybindings = settings_show_keybindings;
+        self.settings.remapping_column = remapping_column;
         self.settings.master_volume = master_volume;
         self.settings.hit_window_mode = hit_window_mode;
         self.settings.hit_window_value = hit_window_value;

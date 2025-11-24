@@ -69,3 +69,52 @@ impl Default for ReplayData {
     }
 }
 
+/// Recalcule les hit_stats et l'accuracy en utilisant la hit window actuelle
+/// 
+/// # Arguments
+/// * `replay_data` - Les données du replay avec les timings des hits
+/// * `total_notes` - Le nombre total de notes dans la map
+/// * `hit_window` - La hit window actuelle à utiliser pour rejuger
+/// 
+/// # Returns
+/// Un tuple (HitStats, accuracy)
+pub fn recalculate_accuracy_with_hit_window(
+    replay_data: &ReplayData,
+    total_notes: usize,
+    hit_window: &crate::models::engine::hit_window::HitWindow,
+) -> (crate::models::stats::HitStats, f64) {
+    use crate::models::stats::{HitStats, Judgement};
+    
+    let mut stats = HitStats::new();
+    
+    // Créer un set des notes qui ont été hit
+    let mut hit_notes = std::collections::HashSet::new();
+    for hit in &replay_data.hits {
+        hit_notes.insert(hit.note_index);
+        
+        // Rejuger avec la nouvelle hit window
+        // Le timing_ms est déjà normalisé (divisé par le rate lors de la sauvegarde)
+        let (judgement, _) = hit_window.judge(hit.timing_ms);
+        
+        match judgement {
+            Judgement::Marv => stats.marv += 1,
+            Judgement::Perfect => stats.perfect += 1,
+            Judgement::Great => stats.great += 1,
+            Judgement::Good => stats.good += 1,
+            Judgement::Bad => stats.bad += 1,
+            Judgement::Miss => stats.miss += 1,
+            Judgement::GhostTap => stats.ghost_tap += 1,
+        }
+    }
+    
+    // Les notes non hit sont des miss
+    for note_index in 0..total_notes {
+        if !hit_notes.contains(&note_index) {
+            stats.miss += 1;
+        }
+    }
+    
+    let accuracy = stats.calculate_accuracy();
+    (stats, accuracy)
+}
+
