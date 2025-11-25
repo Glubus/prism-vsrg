@@ -2,12 +2,13 @@ use super::Renderer;
 use crate::models::engine::GameEngine;
 use crate::renderer::pipeline::create_bind_group_layout;
 use crate::renderer::texture::load_texture_from_path;
+use sqlx;
 use std::path::PathBuf;
 use winit::event::WindowEvent;
-use sqlx;
 
 impl Renderer {
     pub fn update_menu_background(&mut self) {
+        // ... (Code identique) ...
         let selected_beatmapset = {
             if let Ok(menu_state) = self.menu_state.lock() {
                 menu_state
@@ -70,21 +71,17 @@ impl Renderer {
             1.0
         };
         self.engine = GameEngine::from_map(map_path, rate);
-        
-        // Appliquer la hit window depuis les settings
-        self.engine.update_hit_window(self.settings.hit_window_mode, self.settings.hit_window_value);
-        
-        // Recréer le buffer quad avec la bonne taille en fonction du nombre de notes
-        // On a besoin de : nombre de notes (pour le graphe) + 11 quads (panneaux, background, ligne centrale)
+        self.engine.update_hit_window(
+            self.settings.hit_window_mode,
+            self.settings.hit_window_value,
+        );
         let num_notes = self.engine.chart.len();
         let required_quads = num_notes + 11;
         self.resize_quad_buffer(required_quads);
     }
-    
-    /// Recrée le buffer quad avec une nouvelle taille
+
     fn resize_quad_buffer(&mut self, num_quads: usize) {
         use crate::views::components::common::QuadInstance;
-        
         let buffer_size = (num_quads * std::mem::size_of::<QuadInstance>()) as u64;
         self.quad_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Quad Buffer"),
@@ -115,6 +112,19 @@ impl Renderer {
             .increase_note_size();
     }
 
+    /// Applique le ratio en fonction des settings et de la taille de fenêtre
+    pub fn update_pixel_system_ratio(&mut self) {
+        let forced_ratio = match self.settings.aspect_ratio_mode {
+            crate::models::settings::AspectRatioMode::Auto => None,
+            crate::models::settings::AspectRatioMode::Ratio16_9 => Some(16.0 / 9.0),
+            crate::models::settings::AspectRatioMode::Ratio4_3 => Some(4.0 / 3.0),
+        };
+
+        self.pixel_system
+            .update_size(self.config.width, self.config.height, forced_ratio);
+        self.update_component_positions();
+    }
+
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
             self.config.width = new_size.width;
@@ -122,60 +132,68 @@ impl Renderer {
             self.surface.configure(&self.device, &self.config);
             self.text_brush
                 .resize_view(new_size.width as f32, new_size.height as f32, &self.queue);
-            self.pixel_system
-                .update_size(new_size.width, new_size.height);
-            self.update_component_positions();
+
+            // On appelle notre nouvelle méthode qui gère le ratio
+            self.update_pixel_system_ratio();
         }
     }
 
     pub fn load_leaderboard_scores(&mut self) {
-        // Obtenir le hash de la map sélectionnée
+        // ... (Code identique) ...
         let selected_hash = if let Ok(menu_state) = self.menu_state.lock() {
             menu_state.get_selected_beatmap_hash()
         } else {
             None
         };
 
-        // Vérifier si on doit recharger (map différente ou pas encore chargé)
         let needs_reload = match (&self.current_leaderboard_hash, &selected_hash) {
             (Some(current), Some(selected)) => current != selected,
-            (None, Some(_)) => true, // Pas encore chargé mais une map est sélectionnée
-            (_, None) => false, // Pas de map sélectionnée
+            (None, Some(_)) => true,
+            (_, None) => false,
         };
 
         if needs_reload || !self.leaderboard_scores_loaded {
             let rt = tokio::runtime::Runtime::new().unwrap();
             let db_path = std::path::PathBuf::from("main.db");
-            
+
             if let Ok(db) = rt.block_on(crate::database::connection::Database::new(&db_path)) {
                 let (scores, note_count_map) = if let Some(hash) = &selected_hash {
-                    // Charger les scores pour la map spécifique
-                    let replays = rt.block_on(crate::database::query::get_replays_for_beatmap(db.pool(), hash))
+                    let replays = rt
+                        .block_on(crate::database::query::get_replays_for_beatmap(
+                            db.pool(),
+                            hash,
+                        ))
                         .unwrap_or_else(|_| Vec::new());
-                    
-                    // Récupérer le note_count de la beatmap
-                    let note_count = rt.block_on(
-                        sqlx::query_scalar::<_, i32>("SELECT note_count FROM beatmap WHERE hash = ?1")
+
+                    let note_count = rt
+                        .block_on(
+                            sqlx::query_scalar::<_, i32>(
+                                "SELECT note_count FROM beatmap WHERE hash = ?1",
+                            )
                             .bind(hash)
-                            .fetch_optional(db.pool())
-                    ).ok().flatten().unwrap_or(0);
-                    
+                            .fetch_optional(db.pool()),
+                        )
+                        .ok()
+                        .flatten()
+                        .unwrap_or(0);
+
                     let mut note_count_map = std::collections::HashMap::new();
                     note_count_map.insert(hash.clone(), note_count);
                     (replays, note_count_map)
                 } else {
-                    // Pas de map sélectionnée, charger les top scores globaux
-                    let replays = rt.block_on(crate::database::query::get_top_scores(db.pool(), 10))
+                    let replays = rt
+                        .block_on(crate::database::query::get_top_scores(db.pool(), 10))
                         .unwrap_or_else(|_| Vec::new());
-                    
-                    // Récupérer les note_count pour toutes les beatmaps concernées
+
                     let mut note_count_map = std::collections::HashMap::new();
                     for replay in &replays {
                         if !note_count_map.contains_key(&replay.beatmap_hash) {
                             if let Ok(Some(note_count)) = rt.block_on(
-                                sqlx::query_scalar::<_, i32>("SELECT note_count FROM beatmap WHERE hash = ?1")
-                                    .bind(&replay.beatmap_hash)
-                                    .fetch_optional(db.pool())
+                                sqlx::query_scalar::<_, i32>(
+                                    "SELECT note_count FROM beatmap WHERE hash = ?1",
+                                )
+                                .bind(&replay.beatmap_hash)
+                                .fetch_optional(db.pool()),
                             ) {
                                 note_count_map.insert(replay.beatmap_hash.clone(), note_count);
                             }
@@ -195,14 +213,29 @@ impl Renderer {
     }
 
     pub(crate) fn update_component_positions(&mut self) {
+        // Ici, on utilise get_bounds qui utilise maintenant le nouveau ratio X
         let screen_width = self.config.width as f32;
         let screen_height = self.config.height as f32;
 
-        let (_, _playfield_width) = self
+        // get_bounds retourne une largeur en coordonnées normalisées (-1 à 1)
+        // Mais pixel_system.pixels_to_normalized utilise maintenant le ratio.
+        // On veut positionner les éléments en pixels écran.
+
+        let (_, playfield_width_norm) = self
             .gameplay_view
             .playfield_component()
             .get_bounds(&self.pixel_system);
-        let playfield_screen_width = _playfield_width * screen_height / 2.0;
+
+        // Pour convertir la largeur normalisée en pixels écran :
+        // width_norm = width_px * (2.0 / height) / aspect
+        // width_px = width_norm * height / 2.0 * aspect
+
+        // Ceci est la largeur VISUELLE en pixels sur l'écran.
+        // Si aspect = 16/9, playfield_width_norm est plus petit que si aspect = 4/3.
+
+        let playfield_screen_width =
+            playfield_width_norm * (screen_height / 2.0) * self.pixel_system.aspect_ratio;
+
         let playfield_center_x = screen_width / 2.0;
         let left_x =
             ((screen_width / 2.0) - playfield_screen_width - (screen_width * 0.15).min(200.0))
@@ -235,84 +268,12 @@ impl Renderer {
         let _ = self.egui_state.on_window_event(window, event);
     }
 
-    // Fonction pour basculer le menu (à appeler quand on détecte Ctrl+O)
     pub fn toggle_settings(&mut self) {
         self.settings.is_open = !self.settings.is_open;
     }
 
-    // La logique de construction de l'interface
-    // Note: Cette méthode n'est plus utilisée directement car on construit l'UI dans draw.rs
-    // pour éviter les problèmes de borrow. On la garde pour compatibilité.
     #[allow(dead_code)]
-    pub fn ui(&mut self) {
-        // Cette méthode n'est plus utilisée
-    }
-
-    // Version qui accepte le contexte egui en paramètre (pour éviter les problèmes de borrow)
-    // Note: Cette méthode n'est plus utilisée non plus
+    pub fn ui(&mut self) {}
     #[allow(dead_code)]
-    pub(crate) fn ui_with_context(&mut self, ctx: &egui::Context) {
-        if !self.settings.is_open {
-            return;
-        }
-
-        // 1. Panneau Latéral Gauche
-        egui::SidePanel::left("settings_panel")
-            .resizable(false)
-            .default_width(250.0)
-            .show(ctx, |ui| {
-                ui.heading("Settings");
-                ui.separator();
-
-                ui.label("Audio");
-                // Slider Volume
-                if ui.add(egui::Slider::new(&mut self.settings.master_volume, 0.0..=1.0).text("Volume")).changed() {
-                    // Appliquer le volume immédiatement à l'engine
-                    if let Ok(sink) = self.engine.audio_sink.lock() {
-                        sink.set_volume(self.settings.master_volume);
-                    }
-                }
-
-                ui.separator();
-                ui.label("Controls");
-                
-                // Bouton pour ouvrir le remapping
-                if ui.button("Remap Keys").clicked() {
-                    self.settings.show_keybindings = true;
-                }
-
-                ui.add_space(20.0);
-                if ui.button("Close (Ctrl+O)").clicked() {
-                    self.settings.is_open = false;
-                }
-            });
-
-        // 2. Fenêtre Centrale (Modal) pour le Keybinding
-        if self.settings.show_keybindings {
-            egui::Window::new("Key Bindings")
-                .collapsible(false)
-                .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]) // Centrer
-                .show(ctx, |ui| {
-                    ui.label("Click on a button to rebind (Not implemented yet logic-wise)");
-                    
-                    // Exemple de grille pour les touches
-                    egui::Grid::new("keybinds_grid").striped(true).show(ui, |ui| {
-                        ui.label("Column 1");
-                        if ui.button("D").clicked() { /* Logique de capture de touche ici */ }
-                        ui.end_row();
-
-                        ui.label("Column 2");
-                        if ui.button("F").clicked() { /* ... */ }
-                        ui.end_row();
-                        // etc...
-                    });
-
-                    ui.add_space(10.0);
-                    if ui.button("Done").clicked() {
-                        self.settings.show_keybindings = false;
-                    }
-                });
-        }
-    }
+    pub(crate) fn ui_with_context(&mut self, _ctx: &egui::Context) {}
 }

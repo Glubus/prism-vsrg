@@ -1,13 +1,14 @@
 use std::sync::{Arc, Mutex};
-
-use egui::{Align, ScrollArea, scroll_area::ScrollBarVisibility};
+use egui::{Align, ScrollArea, scroll_area::ScrollBarVisibility, TextureId, Color32};
 
 use crate::models::menu::MenuState;
 use crate::views::components::menu::song_select::song_card::SongCard;
 use crate::views::components::menu::song_select::difficulty_card::DifficultyCard;
 
-const ROW_HEIGHT: f32 = 72.0;
-const DIFFICULTY_HEIGHT: f32 = 48.0;
+// Hauteur Carte (80) + Marge (8)
+const ROW_HEIGHT: f32 = 88.0;
+// Hauteur Diff (30) + Marge interne (4) + Espace (4)
+const DIFFICULTY_HEIGHT: f32 = 38.0; 
 
 pub struct SongList {
     menu_state: Arc<Mutex<MenuState>>,
@@ -38,10 +39,6 @@ impl SongList {
         self.current = current;
     }
 
-    pub fn get_current(&self) -> usize {
-        self.current
-    }
-
     pub fn increment(&mut self) {
         let max_index = {
             if let Ok(state) = self.menu_state.lock() {
@@ -59,7 +56,14 @@ impl SongList {
         self.set_scroll_to(self.current.saturating_sub(1));
     }
 
-    pub fn render(&mut self, ui: &mut egui::Ui) {
+    pub fn render(&mut self, ui: &mut egui::Ui, 
+        btn_tex: Option<TextureId>, 
+        btn_sel_tex: Option<TextureId>,
+        diff_tex: Option<TextureId>,
+        diff_sel_tex: Option<TextureId>,
+        song_sel_color: Color32,
+        diff_sel_color: Color32,
+    ) {
         let (beatmapsets, current_from_state, selected_difficulty_index) = {
             let menu_state_guard = match self.menu_state.lock() {
                 Ok(state) => state,
@@ -72,10 +76,8 @@ impl SongList {
             )
         };
         
-        // Update current from state
         self.current = current_from_state;
         
-        // Calculate total height including difficulties for selected map
         let mut total_height = 0.0;
         for (i, (_, beatmaps)) in beatmapsets.iter().enumerate() {
             total_height += ROW_HEIGHT;
@@ -89,7 +91,6 @@ impl SongList {
             .show_viewport(ui, |ui, rect| {
                 ui.set_height(total_height);
 
-                // Calculate cumulative heights for each item
                 let mut cumulative_heights = Vec::new();
                 let mut current_height = 0.0;
                 for (i, (_, beatmaps)) in beatmapsets.iter().enumerate() {
@@ -100,7 +101,6 @@ impl SongList {
                     }
                 }
 
-                // Handling custom scrolling event
                 if let Some(need_scroll_to) = self.need_scroll_to.take() {
                     if need_scroll_to < beatmapsets.len() {
                         let current_y = cumulative_heights.get(self.current).copied().unwrap_or(0.0);
@@ -113,15 +113,8 @@ impl SongList {
                     }
                 }
 
-                // Find visible rows based on cumulative heights
-                let min_row = cumulative_heights
-                    .iter()
-                    .position(|&h| h >= rect.min.y)
-                    .unwrap_or(0);
-                let max_row = cumulative_heights
-                    .iter()
-                    .position(|&h| h > rect.max.y)
-                    .unwrap_or(beatmapsets.len());
+                let min_row = cumulative_heights.iter().position(|&h| h >= rect.min.y).unwrap_or(0);
+                let max_row = cumulative_heights.iter().position(|&h| h > rect.max.y).unwrap_or(beatmapsets.len());
 
                 let fill_top = cumulative_heights.get(min_row).copied().unwrap_or(0.0);
                 egui::Frame::NONE.show(ui, |ui| {
@@ -136,7 +129,7 @@ impl SongList {
                         let id = i;
                         let is_selected = self.current == id;
 
-                        let response = SongCard::render(ui, beatmapset, beatmaps, is_selected);
+                        let response = SongCard::render(ui, beatmapset, beatmaps, is_selected, btn_tex, btn_sel_tex, song_sel_color);
 
                         let sense = response.interact(egui::Sense::click());
 
@@ -169,11 +162,10 @@ impl SongList {
                             response.scroll_to_me(Some(Align::Center));
                         }
 
-                        // Afficher les difficultés si la map est sélectionnée et qu'il y a plus d'une difficulté
                         if is_selected && beatmaps.len() > 1 {
                             for (diff_idx, beatmap) in beatmaps.iter().enumerate() {
                                 let is_diff_selected = diff_idx == selected_difficulty_index;
-                                let diff_response = DifficultyCard::render(ui, beatmap, is_diff_selected);
+                                let diff_response = DifficultyCard::render(ui, beatmap, is_diff_selected, diff_tex, diff_sel_tex, diff_sel_color);
                                 
                                 let diff_sense = diff_response.interact(egui::Sense::click());
                                 
@@ -192,4 +184,3 @@ impl SongList {
             });
     }
 }
-

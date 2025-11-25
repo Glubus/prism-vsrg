@@ -91,11 +91,9 @@ impl Database {
         .await?;
 
         // Migration: Ajouter la colonne rate si elle n'existe pas (pour les bases de données existantes)
-        let _ = sqlx::query(
-            "ALTER TABLE replay ADD COLUMN rate REAL NOT NULL DEFAULT 1.0"
-        )
-        .execute(&self.pool)
-        .await; // On ignore l'erreur si la colonne existe déjà
+        let _ = sqlx::query("ALTER TABLE replay ADD COLUMN rate REAL NOT NULL DEFAULT 1.0")
+            .execute(&self.pool)
+            .await; // On ignore l'erreur si la colonne existe déjà
 
         Ok(())
     }
@@ -130,7 +128,15 @@ impl Database {
         difficulty_name: Option<&str>,
         note_count: i32,
     ) -> Result<String, sqlx::Error> {
-        query::insert_beatmap(&self.pool, beatmapset_id, hash, path, difficulty_name, note_count).await
+        query::insert_beatmap(
+            &self.pool,
+            beatmapset_id,
+            hash,
+            path,
+            difficulty_name,
+            note_count,
+        )
+        .await
     }
 
     /// Récupère tous les beatmapsets avec leurs beatmaps
@@ -156,7 +162,17 @@ impl Database {
         rate: f64,
         data: &str,
     ) -> Result<i64, sqlx::Error> {
-        query::insert_replay(&self.pool, beatmap_hash, timestamp, score, accuracy, max_combo, rate, data).await
+        query::insert_replay(
+            &self.pool,
+            beatmap_hash,
+            timestamp,
+            score,
+            accuracy,
+            max_combo,
+            rate,
+            data,
+        )
+        .await
     }
 
     /// Récupère tous les replays pour une beatmap

@@ -1,19 +1,17 @@
 use super::Renderer;
 use crate::models::engine::{GameEngine, InstanceRaw, NUM_COLUMNS, PixelSystem, PlayfieldConfig};
 use crate::models::menu::MenuState;
-use crate::models::skin::Skin;
 use crate::models::settings::GameSettings;
+use crate::models::skin::Skin;
+use crate::renderer::pipeline::{create_bind_group_layout, create_render_pipeline, create_sampler};
+use crate::renderer::text::load_text_brush;
+use crate::renderer::texture::{create_default_texture, load_texture_from_path};
 use crate::shaders::constants::{BACKGROUND_SHADER_SRC, QUAD_SHADER_SRC};
 use crate::views::components::{
     AccuracyDisplay, ComboDisplay, HitBarDisplay, JudgementFlash, JudgementPanel, PlayfieldDisplay,
     ScoreDisplay,
 };
 use crate::views::gameplay::GameplayView;
-use crate::views::result::ResultView;
-// Note: Ajuste les chemins 'super::super' selon l'emplacement exact de tes fichiers
-use crate::renderer::pipeline::{create_bind_group_layout, create_render_pipeline, create_sampler};
-use crate::renderer::text::load_text_brush;
-use crate::renderer::texture::{create_default_texture, load_texture_from_path};
 
 use egui_wgpu::{Renderer as EguiRenderer, RendererOptions};
 use egui_winit::State as EguiState;
@@ -21,6 +19,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use winit::window::Window;
+
 impl Renderer {
     pub async fn new(window: Arc<Window>, menu_state: Arc<Mutex<MenuState>>) -> Self {
         let size = window.inner_size();
@@ -59,6 +58,7 @@ impl Renderer {
             None,
         );
         let egui_renderer = EguiRenderer::new(&device, surface_format, RendererOptions::default());
+
         let preferred_present_modes = [
             wgpu::PresentMode::Immediate,
             wgpu::PresentMode::Mailbox,
@@ -82,7 +82,6 @@ impl Renderer {
         };
         surface.configure(&device, &config);
 
-        // Initialiser la structure des skins
         if let Err(e) = crate::models::skin::init_skin_structure() {
             eprintln!("Warning: Failed to initialize skin structure: {}", e);
         }
@@ -96,11 +95,41 @@ impl Renderer {
             Self::create_fallback_skin()
         });
 
+        // --- Chargement des textures Egui ---
+        let load_egui_texture = |path_opt: Option<PathBuf>,
+                                 name: &str|
+         -> Option<egui::TextureHandle> {
+            if let Some(path) = path_opt {
+                if path.exists() {
+                    if let Ok(image) = image::open(&path) {
+                        let size = [image.width() as usize, image.height() as usize];
+                        let image_buffer = image.to_rgba8();
+                        let pixels = image_buffer.as_flat_samples();
+                        let color_image =
+                            egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                        return Some(egui_ctx.load_texture(name, color_image, Default::default()));
+                    }
+                }
+            }
+            None
+        };
+
+        let song_button_texture =
+            load_egui_texture(skin_temp.get_song_button_path(), "song_button");
+        let song_button_selected_texture = load_egui_texture(
+            skin_temp.get_song_button_selected_path(),
+            "song_button_selected",
+        );
+        let difficulty_button_texture =
+            load_egui_texture(skin_temp.get_difficulty_button_path(), "difficulty_button");
+        let difficulty_button_selected_texture = load_egui_texture(
+            skin_temp.get_difficulty_button_selected_path(),
+            "difficulty_button_selected",
+        );
+
         let bind_group_layout = create_bind_group_layout(&device);
         let sampler = create_sampler(&device);
 
-        // --- Chargement des Textures (Receptors & Notes) ---
-        // (Tu peux extraire ces boucles dans des fonctions privées si tu veux encore plus découper)
         let receptor_color = skin_temp.get_receptor_color();
         let receptor_default_color = [
             (receptor_color[0] * 255.0) as u8,
@@ -130,7 +159,6 @@ impl Renderer {
                     &format!("Receptor {} Default", col),
                 )
             };
-
             let receptor_texture_view =
                 receptor_texture.create_view(&wgpu::TextureViewDescriptor::default());
             receptor_bind_groups.push(device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -178,7 +206,6 @@ impl Renderer {
                     &format!("Note {} Default", col),
                 )
             };
-
             let note_texture_view =
                 note_texture.create_view(&wgpu::TextureViewDescriptor::default());
             note_bind_groups.push(device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -199,7 +226,6 @@ impl Renderer {
 
         let render_pipeline = create_render_pipeline(&device, &bind_group_layout, config.format);
 
-        // --- Background Setup ---
         let background_sampler = create_sampler(&device);
         let background_bind_group_layout = create_bind_group_layout(&device);
         let background_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -240,7 +266,6 @@ impl Renderer {
             multiview: None,
         });
 
-        // --- Buffers ---
         let buffer_size = (1000 * std::mem::size_of::<InstanceRaw>()) as u64;
         let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Instance Buffer"),
@@ -257,7 +282,6 @@ impl Renderer {
             mapped_at_creation: false,
         });
 
-        // --- Quad Pipeline (Pour les panels) ---
         let quad_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Quad Shader"),
             source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(QUAD_SHADER_SRC)),
@@ -269,7 +293,6 @@ impl Renderer {
             push_constant_ranges: &[],
         });
 
-        // Définition de la structure locale pour l'initialisation du layout
         #[repr(C)]
         #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
         struct QuadInstance {
@@ -329,8 +352,6 @@ impl Renderer {
             multiview: None,
         });
 
-        // Buffer pour les quads (panneaux, graphiques, etc.)
-        // Taille initiale par défaut (sera redimensionné lors du chargement d'une map)
         let quad_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Quad Buffer"),
             size: (100 * std::mem::size_of::<QuadInstance>()) as u64,
@@ -338,7 +359,6 @@ impl Renderer {
             mapped_at_creation: false,
         });
 
-        // --- Font Loading ---
         let skin = skin_temp;
         let font_path = if let Some(skin_font_path) = skin.get_font_path() {
             if skin_font_path.exists() {
@@ -354,11 +374,9 @@ impl Renderer {
             load_text_brush(&device, size.width, size.height, config.format, &font_path);
         let pixel_system = PixelSystem::new(size.width, size.height);
 
-        // --- UI Setup ---
         let playfield_config = PlayfieldConfig::new();
         let judgement_colors = skin.get_judgement_colors();
 
-        // Calculs de positionnement initial
         let screen_width = size.width as f32;
         let screen_height = size.height as f32;
         let playfield_component = PlayfieldDisplay::new(playfield_config);
@@ -387,13 +405,11 @@ impl Renderer {
             receptor_buffer,
             engine: GameEngine::new(),
             text_brush,
-            frame_count: 0,
             last_fps_update: Instant::now(),
             fps: 0.0,
             pixel_system,
             skin,
             gameplay_view: GameplayView::new(playfield_component),
-            result_view: ResultView::new(screen_width, screen_height),
             hit_bar: HitBarDisplay::new(
                 playfield_center_x - hitbar_width / 2.0,
                 hitbar_y,
@@ -420,6 +436,12 @@ impl Renderer {
             leaderboard_scores_loaded: false,
             current_leaderboard_hash: None,
             song_select_screen: None,
+            result_screen: None,
+            // Assignation correcte des textures
+            song_button_texture,
+            song_button_selected_texture,
+            difficulty_button_texture,
+            difficulty_button_selected_texture,
         }
     }
 }

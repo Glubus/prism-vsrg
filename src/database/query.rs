@@ -174,10 +174,7 @@ pub async fn get_replays_for_beatmap(
 }
 
 /// Récupère les meilleurs scores triés par rate puis accuracy (toutes beatmaps confondues)
-pub async fn get_top_scores(
-    pool: &SqlitePool,
-    limit: i32,
-) -> Result<Vec<Replay>, sqlx::Error> {
+pub async fn get_top_scores(pool: &SqlitePool, limit: i32) -> Result<Vec<Replay>, sqlx::Error> {
     let replays: Vec<Replay> = sqlx::query_as(
         "SELECT id, beatmap_hash, timestamp, score, accuracy, max_combo, rate, data FROM replay ORDER BY rate DESC, accuracy DESC, timestamp DESC LIMIT ?1"
     )

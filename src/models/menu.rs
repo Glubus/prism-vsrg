@@ -1,6 +1,20 @@
 use crate::database::{Beatmap, Beatmapset, Database};
+use crate::models::replay::ReplayData;
+use crate::models::stats::HitStats;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+
+#[derive(Clone)]
+pub struct GameResultData {
+    pub hit_stats: HitStats,
+    pub replay_data: ReplayData,
+    pub score: u32,
+    pub accuracy: f64,
+    pub max_combo: u32,
+    pub beatmap_hash: Option<String>,
+    pub rate: f64,
+    pub judge_text: String,
+}
 
 #[derive(Clone)]
 pub struct MenuState {
@@ -13,6 +27,8 @@ pub struct MenuState {
     pub in_menu: bool,
     pub show_result: bool,
     pub rate: f64,
+    pub last_result: Option<GameResultData>,
+    pub should_close_result: bool, // Nouveau champ pour le signal de fermeture
 }
 
 impl MenuState {
@@ -27,6 +43,8 @@ impl MenuState {
             in_menu: true,
             show_result: false,
             rate: 1.0,
+            last_result: None,
+            should_close_result: false,
         }
     }
 

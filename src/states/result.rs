@@ -1,18 +1,13 @@
 use super::{GameState, MenuStateController, StateContext, StateTransition};
-use crate::models::menu::MenuState;
-use crate::models::stats::HitStats;
+use crate::models::menu::{GameResultData, MenuState};
 use crate::models::replay::ReplayData;
+use crate::models::stats::HitStats;
 use std::sync::{Arc, Mutex};
 use winit::event::{ElementState, KeyEvent, WindowEvent};
-use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::keyboard::{Key, NamedKey}; // Import correct pour les touches logiques
 
 pub struct ResultStateController {
     menu_state: Arc<Mutex<MenuState>>,
-    hit_stats: HitStats,
-    replay_data: ReplayData,
-    score: u32,
-    accuracy: f64,
-    max_combo: u32,
 }
 
 impl ResultStateController {
@@ -24,14 +19,25 @@ impl ResultStateController {
         accuracy: f64,
         max_combo: u32,
     ) -> Self {
-        Self {
-            menu_state,
-            hit_stats,
-            replay_data,
-            score,
-            accuracy,
-            max_combo,
+        if let Ok(mut state) = menu_state.lock() {
+            let hash = state.get_selected_beatmap_hash();
+            let rate = state.rate;
+            let judge_text = "Result".to_string();
+
+            state.last_result = Some(GameResultData {
+                hit_stats,
+                replay_data,
+                score,
+                accuracy,
+                max_combo,
+                beatmap_hash: hash,
+                rate,
+                judge_text,
+            });
+            state.should_close_result = false;
         }
+
+        Self { menu_state }
     }
 
     fn with_menu_state<F>(&self, mut f: F)
@@ -49,13 +55,49 @@ impl GameState for ResultStateController {
         self.with_menu_state(|state| {
             state.in_menu = true;
             state.show_result = true;
+            state.should_close_result = false;
+        });
+
+        _ctx.with_renderer(|renderer| {
+            let settings_text = match renderer.settings.hit_window_mode {
+                crate::models::settings::HitWindowMode::OsuOD => {
+                    format!("OD {:.1}", renderer.settings.hit_window_value)
+                }
+                crate::models::settings::HitWindowMode::EtternaJudge => {
+                    format!("Judge {}", renderer.settings.hit_window_value as u8)
+                }
+            };
+
+            if let Ok(mut state) = self.menu_state.lock() {
+                if let Some(res) = &mut state.last_result {
+                    res.judge_text = settings_text;
+                }
+            }
         });
     }
 
     fn on_exit(&mut self, _ctx: &mut StateContext) {
         self.with_menu_state(|state| {
             state.show_result = false;
+            state.should_close_result = false;
         });
+    }
+
+    fn update(&mut self, _ctx: &mut StateContext) -> StateTransition {
+        // Vérifier si l'UI a demandé la fermeture (via le bouton par exemple)
+        let should_close = if let Ok(state) = self.menu_state.lock() {
+            state.should_close_result
+        } else {
+            false
+        };
+
+        if should_close {
+            return StateTransition::Replace(Box::new(MenuStateController::new(Arc::clone(
+                &self.menu_state,
+            ))));
+        }
+
+        StateTransition::None
     }
 
     fn handle_input(&mut self, event: &WindowEvent, _ctx: &mut StateContext) -> StateTransition {
@@ -63,15 +105,15 @@ impl GameState for ResultStateController {
             event:
                 KeyEvent {
                     state: ElementState::Pressed,
-                    physical_key: PhysicalKey::Code(key_code),
+                    logical_key, // Utilisation de la touche logique (layout-independent)
                     ..
                 },
             ..
         } = event
         {
-            match key_code {
-                KeyCode::Escape | KeyCode::Enter | KeyCode::NumpadEnter => {
-                    // Retour au menu
+            // Détection robuste de Entrée et Echap
+            match logical_key {
+                Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Escape) => {
                     return StateTransition::Replace(Box::new(MenuStateController::new(
                         Arc::clone(&self.menu_state),
                     )));
@@ -82,4 +124,3 @@ impl GameState for ResultStateController {
         StateTransition::None
     }
 }
-

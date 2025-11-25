@@ -30,7 +30,7 @@ impl BeatmapInfo {
             .fill(Color32::from_rgba_unmultiplied(38, 38, 38, 230))
             .show(ui, |ui| {
                 ui.set_width(ui.available_rect_before_wrap().width());
-                
+
                 // Nom de la difficulté en gros
                 if let Some(bm) = beatmap {
                     if let Some(diff_name) = &bm.difficulty_name {
@@ -83,13 +83,22 @@ impl BeatmapInfo {
 
                 // Onglets pour osu/etterna/quaver
                 ui.horizontal(|ui| {
-                    if ui.selectable_label(self.selected_rating_tab == 0, "osu!").clicked() {
+                    if ui
+                        .selectable_label(self.selected_rating_tab == 0, "osu!")
+                        .clicked()
+                    {
                         self.selected_rating_tab = 0;
                     }
-                    if ui.selectable_label(self.selected_rating_tab == 1, "Etterna").clicked() {
+                    if ui
+                        .selectable_label(self.selected_rating_tab == 1, "Etterna")
+                        .clicked()
+                    {
                         self.selected_rating_tab = 1;
                     }
-                    if ui.selectable_label(self.selected_rating_tab == 2, "Quaver").clicked() {
+                    if ui
+                        .selectable_label(self.selected_rating_tab == 2, "Quaver")
+                        .clicked()
+                    {
                         self.selected_rating_tab = 2;
                     }
                 });
@@ -122,7 +131,7 @@ impl BeatmapInfo {
                         }
                         _ => {}
                     }
-                    
+
                     // Rate à droite, au même niveau
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(RichText::new(format!("{:.1}x", rate)).size(20.0).strong());
@@ -131,4 +140,3 @@ impl BeatmapInfo {
             });
     }
 }
-

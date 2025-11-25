@@ -19,15 +19,3 @@ pub struct GameplayRenderContext<'a> {
     pub fps: f64,
     pub master_volume: f32,
 }
-
-pub struct ResultRenderContext<'a> {
-    pub device: &'a Device,
-    pub queue: &'a Queue,
-    pub text_brush: &'a mut TextBrush,
-    pub view: &'a TextureView,
-    pub quad_pipeline: &'a RenderPipeline,
-    pub quad_buffer: &'a Buffer,
-    pub screen_width: f32,
-    pub screen_height: f32,
-    pub fps: f64,
-}

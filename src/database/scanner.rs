@@ -15,7 +15,6 @@ pub async fn scan_songs_directory(
         return Ok(());
     }
 
-
     // Parcourir tous les dossiers dans songs/
     let entries = fs::read_dir(songs_path)?;
 
@@ -89,7 +88,7 @@ pub async fn scan_songs_directory(
                             eprintln!("Error calculating hash for {:?}: {}", osu_file, e);
                             continue;
                         }
-                    }; 
+                    };
 
                     match rosu_map::Beatmap::from_path(osu_file) {
                         Ok(bm) => {
@@ -153,11 +152,11 @@ fn calculate_file_hash(file_path: &Path) -> Result<String, std::io::Error> {
     let mut file = fs::File::open(file_path)?;
     let mut buffer = String::new();
     file.read_to_string(&mut buffer)?;
-    
+
     let mut context = Context::new();
     context.consume(buffer.as_bytes());
     let result = context.finalize();
     let hash_string = format!("{:x}", result);
-    
+
     Ok(hash_string)
 }

@@ -53,7 +53,7 @@ impl MenuStateController {
 impl GameState for MenuStateController {
     fn on_enter(&mut self, ctx: &mut StateContext) {
         self.with_menu_state(|state| state.in_menu = true);
-        
+
         // Réinitialiser le flag de chargement des scores pour forcer le rechargement
         ctx.with_renderer(|renderer| {
             renderer.leaderboard_scores_loaded = false;

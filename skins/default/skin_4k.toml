@@ -38,7 +38,8 @@ miss_note = "miss_note.png"
 
 # Image de fond (optionnel)
 background = "background.png"
-
+song_button = "song_button.png"
+difficulty_button = "difficulty_button.png"
 # Couleurs personnalisées
 [colors]
 receptor_color = [0.0, 0.0, 1.0, 1.0]  # Bleu pour les receptors
@@ -52,7 +53,8 @@ good = [0.0, 0.0, 0.5, 1.0]            # Bleu foncé
 bad = [1.0, 0.41, 0.71, 1.0]           # Rose
 miss = [1.0, 0.0, 0.0, 1.0]            # Rouge
 ghost_tap = [0.5, 0.5, 0.5, 1.0]      # Gris
-
+selected_color = [0.4, 0.7, 0.8, 1] # Rouge pour la sélection
+difficulty_selected_color = [0.7, 0.4, 0.8, 1] # Jaune pour la sélection
 # Configuration des touches
 [keys]
 column_0 = ["KeyD"]

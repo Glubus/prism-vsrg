@@ -85,81 +85,81 @@ impl GameState for PlayStateController {
                         // Si pas trouvé, essayer de convertir le KeyCode en caractère possible
                         // et chercher par caractère (pour AZERTY)
                         let column = column.or_else(|| {
-                        // Mapping approximatif KeyCode -> caractère AZERTY
-                        let mut char_keys = Vec::new();
-                        match *key_code {
-                            KeyCode::Digit0 => {
-                                char_keys.push("à");
+                            // Mapping approximatif KeyCode -> caractère AZERTY
+                            let mut char_keys = Vec::new();
+                            match *key_code {
+                                KeyCode::Digit0 => {
+                                    char_keys.push("à");
+                                }
+                                KeyCode::Digit1 => {
+                                    char_keys.push("&");
+                                }
+                                KeyCode::Digit2 => {
+                                    char_keys.push("é");
+                                }
+                                KeyCode::Digit3 => {
+                                    char_keys.push("\"");
+                                }
+                                KeyCode::Digit4 => {
+                                    char_keys.push("'");
+                                }
+                                KeyCode::Digit5 => {
+                                    char_keys.push("(");
+                                }
+                                KeyCode::Digit6 => {
+                                    char_keys.push("-");
+                                }
+                                KeyCode::Digit7 => {
+                                    char_keys.push("è");
+                                }
+                                KeyCode::Digit8 => {
+                                    char_keys.push("_");
+                                }
+                                KeyCode::Digit9 => {
+                                    char_keys.push("ç");
+                                }
+                                KeyCode::KeyQ => {
+                                    char_keys.push("a");
+                                }
+                                KeyCode::KeyW => {
+                                    char_keys.push("z");
+                                }
+                                KeyCode::KeyA => {
+                                    char_keys.push("q");
+                                }
+                                KeyCode::KeyM => {
+                                    char_keys.push("?");
+                                }
+                                KeyCode::Comma => {
+                                    char_keys.push(";");
+                                }
+                                KeyCode::Period => {
+                                    char_keys.push(":");
+                                }
+                                KeyCode::Semicolon => {
+                                    char_keys.push("m");
+                                }
+                                KeyCode::Slash => {
+                                    char_keys.push("!");
+                                }
+                                // La touche grave/tilde produit "²" en AZERTY
+                                KeyCode::Backquote => {
+                                    char_keys.push("²");
+                                }
+                                _ => {}
                             }
-                            KeyCode::Digit1 => {
-                                char_keys.push("&");
+
+                            // Essayer tous les caractères possibles pour cette touche
+                            let mut found_column = None;
+                            for ch in char_keys {
+                                if let Some(col) = renderer.skin.get_column_for_key(ch) {
+                                    found_column = Some(col);
+                                    break;
+                                }
                             }
-                            KeyCode::Digit2 => {
-                                char_keys.push("é");
-                            }
-                            KeyCode::Digit3 => {
-                                char_keys.push("\"");
-                            }
-                            KeyCode::Digit4 => {
-                                char_keys.push("'");
-                            }
-                            KeyCode::Digit5 => {
-                                char_keys.push("(");
-                            }
-                            KeyCode::Digit6 => {
-                                char_keys.push("-");
-                            }
-                            KeyCode::Digit7 => {
-                                char_keys.push("è");
-                            }
-                            KeyCode::Digit8 => {
-                                char_keys.push("_");
-                            }
-                            KeyCode::Digit9 => {
-                                char_keys.push("ç");
-                            }
-                            KeyCode::KeyQ => {
-                                char_keys.push("a");
-                            }
-                            KeyCode::KeyW => {
-                                char_keys.push("z");
-                            }
-                            KeyCode::KeyA => {
-                                char_keys.push("q");
-                            }
-                            KeyCode::KeyM => {
-                                char_keys.push("?");
-                            }
-                            KeyCode::Comma => {
-                                char_keys.push(";");
-                            }
-                            KeyCode::Period => {
-                                char_keys.push(":");
-                            }
-                            KeyCode::Semicolon => {
-                                char_keys.push("m");
-                            }
-                            KeyCode::Slash => {
-                                char_keys.push("!");
-                            }
-                            // La touche grave/tilde produit "²" en AZERTY
-                            KeyCode::Backquote => {
-                                char_keys.push("²");
-                            }
-                            _ => {}
-                        }
-                        
-                        // Essayer tous les caractères possibles pour cette touche
-                        let mut found_column = None;
-                        for ch in char_keys {
-                            if let Some(col) = renderer.skin.get_column_for_key(ch) {
-                                found_column = Some(col);
-                                break;
-                            }
-                        }
-                        found_column
+                            found_column
                         });
-                        
+
                         if let Some(column) = column {
                             renderer.engine.process_input(column);
                         }
@@ -172,35 +172,37 @@ impl GameState for PlayStateController {
 
     fn update(&mut self, ctx: &mut StateContext) -> StateTransition {
         // Vérifier si la partie est terminée
-        let game_finished = ctx.with_renderer(|renderer| {
-            renderer.engine.is_game_finished()
-        }).unwrap_or(false);
+        let game_finished = ctx
+            .with_renderer(|renderer| renderer.engine.is_game_finished())
+            .unwrap_or(false);
 
         if game_finished {
             // Sauvegarder le replay dans la base de données
             let _ = ctx.with_renderer(|renderer| {
                 let rt = tokio::runtime::Runtime::new().unwrap();
                 let db_path = std::path::PathBuf::from("main.db");
-                
+
                 if let Ok(db) = rt.block_on(crate::database::connection::Database::new(&db_path)) {
                     if let Err(e) = rt.block_on(renderer.engine.save_replay(&db)) {
                         eprintln!("Erreur lors de la sauvegarde du replay: {}", e);
                     }
                 }
             });
-            
+
             // Récupérer les stats et le replay avant de passer à l'écran de résultats
-            if let Some((hit_stats, replay_data, score, accuracy, max_combo)) = ctx.with_renderer(|renderer| {
-                let hit_stats = renderer.engine.hit_stats.clone();
-                let replay_data = renderer.engine.replay_data.clone();
-                let score = renderer.engine.notes_passed;
-                let accuracy = hit_stats.calculate_accuracy();
-                let max_combo = renderer.engine.max_combo;
-                (hit_stats, replay_data, score, accuracy, max_combo)
-            }) {
+            if let Some((hit_stats, replay_data, score, accuracy, max_combo)) =
+                ctx.with_renderer(|renderer| {
+                    let hit_stats = renderer.engine.hit_stats.clone();
+                    let replay_data = renderer.engine.replay_data.clone();
+                    let score = renderer.engine.notes_passed;
+                    let accuracy = hit_stats.calculate_accuracy();
+                    let max_combo = renderer.engine.max_combo;
+                    (hit_stats, replay_data, score, accuracy, max_combo)
+                })
+            {
                 // Arrêter l'audio
                 ctx.with_renderer(|renderer| renderer.stop_audio());
-                
+
                 return StateTransition::Replace(Box::new(ResultStateController::new(
                     Arc::clone(&self.menu_state),
                     hit_stats,

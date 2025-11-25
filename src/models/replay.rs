@@ -3,21 +3,21 @@ use serde::{Deserialize, Serialize};
 /// Représente un hit sur une note
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReplayHit {
-    pub note_index: usize,  // Numéro de la note dans l'ordre
-    pub timing_ms: f64,     // Distance en ms (peut être négatif si en avance)
+    pub note_index: usize, // Numéro de la note dans l'ordre
+    pub timing_ms: f64,    // Distance en ms (peut être négatif si en avance)
 }
 
 /// Représente une pression standard de l'utilisateur (touche pressée sans note)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReplayKeyPress {
-    pub timestamp_ms: f64,  // Temps absolu en ms depuis le début
-    pub column: usize,      // Colonne pressée
+    pub timestamp_ms: f64, // Temps absolu en ms depuis le début
+    pub column: usize,     // Colonne pressée
 }
 
 /// Structure complète d'un replay
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReplayData {
-    pub hits: Vec<ReplayHit>,           // Tous les hits dans l'ordre
+    pub hits: Vec<ReplayHit>,             // Tous les hits dans l'ordre
     pub key_presses: Vec<ReplayKeyPress>, // Toutes les pressions standard
     pub hit_stats: Option<crate::models::stats::HitStats>, // Stats de hits pour affichage rapide
 }
@@ -70,12 +70,12 @@ impl Default for ReplayData {
 }
 
 /// Recalcule les hit_stats et l'accuracy en utilisant la hit window actuelle
-/// 
+///
 /// # Arguments
 /// * `replay_data` - Les données du replay avec les timings des hits
 /// * `total_notes` - Le nombre total de notes dans la map
 /// * `hit_window` - La hit window actuelle à utiliser pour rejuger
-/// 
+///
 /// # Returns
 /// Un tuple (HitStats, accuracy)
 pub fn recalculate_accuracy_with_hit_window(
@@ -84,18 +84,18 @@ pub fn recalculate_accuracy_with_hit_window(
     hit_window: &crate::models::engine::hit_window::HitWindow,
 ) -> (crate::models::stats::HitStats, f64) {
     use crate::models::stats::{HitStats, Judgement};
-    
+
     let mut stats = HitStats::new();
-    
+
     // Créer un set des notes qui ont été hit
     let mut hit_notes = std::collections::HashSet::new();
     for hit in &replay_data.hits {
         hit_notes.insert(hit.note_index);
-        
+
         // Rejuger avec la nouvelle hit window
         // Le timing_ms est déjà normalisé (divisé par le rate lors de la sauvegarde)
         let (judgement, _) = hit_window.judge(hit.timing_ms);
-        
+
         match judgement {
             Judgement::Marv => stats.marv += 1,
             Judgement::Perfect => stats.perfect += 1,
@@ -106,15 +106,14 @@ pub fn recalculate_accuracy_with_hit_window(
             Judgement::GhostTap => stats.ghost_tap += 1,
         }
     }
-    
+
     // Les notes non hit sont des miss
     for note_index in 0..total_notes {
         if !hit_notes.contains(&note_index) {
             stats.miss += 1;
         }
     }
-    
+
     let accuracy = stats.calculate_accuracy();
     (stats, accuracy)
 }
-

@@ -12,8 +12,8 @@ impl PlayfieldDisplay {
     }
 
     pub fn get_bounds(&self, pixel_system: &PixelSystem) -> (f32, f32) {
-        let width =
-            pixel_system.pixels_to_normalized(self.config.column_width_pixels * NUM_COLUMNS as f32);
+        let width = pixel_system
+            .x_pixels_to_normalized(self.config.column_width_pixels * NUM_COLUMNS as f32);
         let x = -width / 2.0;
         (x, width)
     }
@@ -27,8 +27,10 @@ impl PlayfieldDisplay {
     ) -> Vec<(usize, InstanceRaw)> {
         let (playfield_x, _playfield_width) = self.get_bounds(pixel_system);
 
-        let column_width_norm = pixel_system.pixels_to_normalized(self.config.column_width_pixels);
-        let note_size_norm = pixel_system.pixels_to_normalized(self.config.note_width_pixels);
+        let column_width_norm =
+            pixel_system.x_pixels_to_normalized(self.config.column_width_pixels);
+        let note_width_norm = pixel_system.x_pixels_to_normalized(self.config.note_width_pixels);
+        let note_height_norm = pixel_system.y_pixels_to_normalized(self.config.note_height_pixels);
 
         let mut instances = Vec::with_capacity(visible_notes.len());
 
@@ -48,7 +50,7 @@ impl PlayfieldDisplay {
                 note.column,
                 InstanceRaw {
                     offset: [center_x, y_pos],
-                    scale: [note_size_norm, note_size_norm],
+                    scale: [note_width_norm, note_height_norm],
                 },
             ));
         }
@@ -59,8 +61,15 @@ impl PlayfieldDisplay {
     pub fn render_receptors(&self, pixel_system: &PixelSystem) -> Vec<InstanceRaw> {
         let (playfield_x, _playfield_width) = self.get_bounds(pixel_system);
 
-        let column_width_norm = pixel_system.pixels_to_normalized(self.config.column_width_pixels);
-        let receptor_size_norm = pixel_system.pixels_to_normalized(self.config.note_width_pixels);
+        let column_width_norm =
+            pixel_system.x_pixels_to_normalized(self.config.column_width_pixels);
+        let receptor_width_norm =
+            pixel_system.x_pixels_to_normalized(self.config.note_width_pixels);
+
+        // CORRECTION ICI : On utilise note_width_pixels pour la hauteur aussi
+        // Cela rend le récepteur carré (90x90) au lieu d'un rectangle plat (90x20)
+        let receptor_height_norm =
+            pixel_system.y_pixels_to_normalized(self.config.note_width_pixels);
 
         let mut instances = Vec::with_capacity(NUM_COLUMNS);
 
@@ -70,7 +79,7 @@ impl PlayfieldDisplay {
 
             instances.push(InstanceRaw {
                 offset: [center_x, HIT_LINE_Y],
-                scale: [receptor_size_norm, receptor_size_norm],
+                scale: [receptor_width_norm, receptor_height_norm],
             });
         }
 
