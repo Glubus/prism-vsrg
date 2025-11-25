@@ -2,7 +2,7 @@ use super::{
     constants::{HIT_LINE_Y, NUM_COLUMNS, VISIBLE_DISTANCE},
     hit_window::HitWindow,
     instance::InstanceRaw,
-    note::{load_map, NoteData},
+    note::{NoteData, load_map},
     pixel_system::PixelSystem,
     playfield::PlayfieldConfig,
 };
@@ -10,7 +10,7 @@ use crate::models::replay::ReplayData;
 use crate::models::stats::{HitStats, Judgement};
 use md5::Context;
 use rand::Rng;
-use rodio::source::SeekError; 
+use rodio::source::SeekError;
 use rodio::{Decoder, OutputStream, Sink, Source};
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -83,7 +83,7 @@ pub struct GameEngine {
     pub rate: f64,
     pub replay_data: ReplayData,
     beatmap_hash: Option<String>,
-    pub intro_skipped: bool, 
+    pub intro_skipped: bool,
 }
 
 impl GameEngine {
@@ -203,7 +203,7 @@ impl GameEngine {
         if let Some(first_note) = self.chart.first() {
             let target_ms_before_note = first_note.timestamp_ms - 3000.0;
             let current_time = self.get_audio_time();
-            
+
             // Nouvelle condition: Ne pas skipper si nous sommes déjà proche (moins de 1000ms) de la première note.
             if current_time >= target_ms_before_note {
                 return;
@@ -222,7 +222,7 @@ impl GameEngine {
 
             // Mise à jour des horloges logiques
             let now = Instant::now();
-            
+
             if self.audio_started {
                 let elapsed_needed = target_ms / self.rate;
                 let adjustment = Duration::from_secs_f64(elapsed_needed / 1000.0);
@@ -234,7 +234,7 @@ impl GameEngine {
                         sink.play();
                     }
                     self.audio_started = true;
-                    
+
                     let elapsed_needed = target_ms / self.rate;
                     let adjustment = Duration::from_secs_f64(elapsed_needed / 1000.0);
                     self.audio_start_instant = Some(now - adjustment);
@@ -245,11 +245,11 @@ impl GameEngine {
                     self.engine_start_time = now - adjustment;
                 }
             }
-            
+
             // Reset visuel
             self.last_hit_timing = None;
             self.last_hit_judgement = None;
-            
+
             // Marquer comme sauté pour désactiver la touche
             self.intro_skipped = true;
         }

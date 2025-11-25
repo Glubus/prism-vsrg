@@ -1,4 +1,4 @@
-use super::{GameState, PlayStateController, EditorStateController, StateContext, StateTransition};
+use super::{EditorStateController, GameState, PlayStateController, StateContext, StateTransition};
 use crate::models::menu::MenuState;
 use std::sync::{Arc, Mutex};
 use winit::event::{ElementState, KeyEvent, WindowEvent};

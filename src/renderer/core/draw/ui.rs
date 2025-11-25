@@ -119,30 +119,23 @@ impl Renderer {
             }
             if settings_is_open { egui::SidePanel::left("settings_panel").resizable(false).default_width(250.0).show(ctx, |ui| { 
                 ui.heading("Settings"); 
-                ui.separator(); 
-                
+                ui.separator();
                 // --- AUDIO SECTION ---
                 ui.label("Audio"); 
                 if ui.add(egui::Slider::new(&mut master_volume, 0.0..=1.0).text("Volume")).changed() { 
-                    self.engine.set_volume(master_volume); 
-                } 
-                
-                ui.separator(); 
-                
+                    self.engine.set_volume(master_volume);
+                }
+                ui.separator();
                 // --- GAMEPLAY SECTION ---
-                ui.label("Gameplay"); 
-                
+                ui.label("Gameplay");
                 // Scroll Speed
                 if ui.add(egui::Slider::new(&mut scroll_speed, 100.0..=2000.0).text("Speed")).changed() { 
-                    self.engine.scroll_speed_ms = scroll_speed; 
-                } 
-                
+                    self.engine.scroll_speed_ms = scroll_speed;
+                }
                 ui.add_space(10.0);
                 ui.separator();
-                
                 // --- HIT WINDOW SECTION ---
                 ui.label("Hit Window");
-                
                 let mut hit_window_changed = false;
 
                 ui.horizontal(|ui| {
@@ -169,23 +162,20 @@ impl Renderer {
                         }
                     }
                 }
-                
                 if hit_window_changed {
                     self.engine.update_hit_window(hit_window_mode, hit_window_value);
                 }
 
                 ui.add_space(10.0);
-                
                 // --- KEY BINDINGS BUTTON ---
                 ui.separator();
                 if ui.button("Key Bindings").clicked() {
                     settings_show_keybindings = true;
                 }
-                
                 ui.add_space(5.0);
 
                 if ui.button("Close & Save").clicked() { settings_is_open = false; } 
-            }); 
+            });
             }
             if settings_show_keybindings { egui::Window::new("Key Bindings").show(ctx, |ui| { if let Some(col) = remapping_column { ui.label(format!("Press key for Col {}...", col + 1)); if let Some(k) = &captured_key { let binds = self.settings.keybinds.entry(NUM_COLUMNS.to_string()).or_insert_with(Vec::new); while binds.len() <= col { binds.push("None".to_string()); } binds[col] = k.clone(); self.settings.save(); remapping_column = None; } if ui.button("Cancel").clicked() { remapping_column = None; } } else { egui::Grid::new("kb_grid").striped(true).show(ui, |ui| { for (c, k) in keybinding_rows.iter() { ui.label(format!("Col {}", c + 1)); if ui.button(k).clicked() { remapping_column = Some(*c); } ui.end_row(); } }); } if ui.button("Done").clicked() { settings_show_keybindings = false; remapping_column = None; } }); }
         });

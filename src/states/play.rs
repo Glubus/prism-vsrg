@@ -1,6 +1,6 @@
 use super::{GameState, MenuStateController, ResultStateController, StateContext, StateTransition};
-use crate::models::menu::MenuState;
 use crate::models::engine::NUM_COLUMNS; // Import nécessaire pour les keybinds
+use crate::models::menu::MenuState;
 use std::sync::{Arc, Mutex};
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
@@ -37,7 +37,7 @@ impl GameState for PlayStateController {
         if let WindowEvent::KeyboardInput {
             event:
                 KeyEvent {
-                    state: input_state, 
+                    state: input_state,
                     physical_key: PhysicalKey::Code(key_code),
                     repeat,
                     ..
@@ -98,10 +98,12 @@ impl GameState for PlayStateController {
 
             // 2. Gérer l'état des colonnes (Pressed OU Released)
             let key_name = Self::keycode_to_string(*key_code);
-            
+
             ctx.with_renderer(|renderer| {
                 // Récupérer les binds pour le nombre de colonnes actuel
-                let current_binds = renderer.settings.keybinds
+                let current_binds = renderer
+                    .settings
+                    .keybinds
                     .get(NUM_COLUMNS.to_string().as_str())
                     .cloned()
                     .unwrap_or_default();
@@ -137,7 +139,10 @@ impl GameState for PlayStateController {
 
                     // Chercher si un des caractères correspond à un bind
                     for ch in char_keys {
-                        if let Some(col) = current_binds.iter().position(|k| k.eq_ignore_ascii_case(ch)) {
+                        if let Some(col) = current_binds
+                            .iter()
+                            .position(|k| k.eq_ignore_ascii_case(ch))
+                        {
                             column = Some(col);
                             break;
                         }
