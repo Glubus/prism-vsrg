@@ -3075,6 +3075,7 @@ name = "rvsrg"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "crossbeam-channel",
  "egui",
  "egui-wgpu",
  "egui-winit",
