@@ -1,30 +1,43 @@
-mod app;
-mod core;    // NOUVEAU
-mod database;
-mod logic;   // NOUVEAU
+mod system;
+mod input;
+mod logic;
+mod render;
+
+// Modules modèles/données (nécessaires)
 mod models;
-mod renderer;
-mod shaders;
-mod shared;  // NOUVEAU
+mod database;
+mod core;
+mod shared;
 mod states;
 mod views;
+mod shaders;
 
-use app::App;
-use winit::event_loop::{ControlFlow, EventLoop};
+// mod renderer; // SUPPRIMÉ : L'ancien renderer est mort, vive le nouveau dans 'mod render' !
+
+use crate::system::bus::SystemBus;
+use std::path::PathBuf;
+use crate::database::DbManager;
 
 fn main() {
+    unsafe { std::env::set_var("RUST_LOG", "info"); }
     env_logger::init();
+    
+    log::info!("MAIN: Booting rVsrg 2.0...");
 
-    // Créer un runtime tokio global pour les opérations async (Database, etc.)
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let _enter = rt.enter(); // Entrer dans le contexte du runtime
+    let bus = SystemBus::new();
+    
+    let input_bus = bus.clone(); 
+    let logic_bus = bus.clone();
+    let render_bus = bus.clone();
 
-    let event_loop = EventLoop::new().unwrap();
-    // Pour un jeu de rythme, Poll est essentiel pour une latence minimale
-    event_loop.set_control_flow(ControlFlow::Poll); 
+    let db_path = PathBuf::from("main.db");
+    let songs_path = PathBuf::from("songs");
+    let db_manager = DbManager::new(db_path, songs_path);
 
-    let mut app = App::new();
+    let input_manager = input::manager::InputManager::new(); 
 
-    // Winit 0.30 lance l'application
-    let _ = event_loop.run_app(&mut app);
+    input::start_thread(input_bus, input_manager);
+    logic::start_thread(logic_bus, db_manager);
+
+    render::app::App::run(render_bus);
 }

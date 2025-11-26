@@ -5,7 +5,7 @@ mod result;
 
 use crate::core::input::actions::KeyAction;
 use crate::database::DbManager;
-use crate::renderer::Renderer;
+use crate::render::renderer::Renderer;
 use crate::shared::messages::MainToLogic;
 use std::sync::mpsc::Sender; // NOUVEAU
 

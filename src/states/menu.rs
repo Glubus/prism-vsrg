@@ -50,8 +50,8 @@ impl GameState for MenuStateController {
         
         // Reset visuel local (optionnel, le snapshot écrasera ça vite)
         ctx.with_renderer(|renderer| {
-            renderer.leaderboard_scores_loaded = false;
-            renderer.current_leaderboard_hash = None;
+            renderer.resources.leaderboard_scores_loaded = false;
+            renderer.resources.current_leaderboard_hash = None;
         });
     }
 

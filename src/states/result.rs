@@ -59,12 +59,12 @@ impl GameState for ResultStateController {
         });
 
         _ctx.with_renderer(|renderer| {
-            let settings_text = match renderer.settings.hit_window_mode {
+            let settings_text = match renderer.resources.settings.hit_window_mode {
                 crate::models::settings::HitWindowMode::OsuOD => {
-                    format!("OD {:.1}", renderer.settings.hit_window_value)
+                    format!("OD {:.1}", renderer.resources.settings.hit_window_value)
                 }
                 crate::models::settings::HitWindowMode::EtternaJudge => {
-                    format!("Judge {}", renderer.settings.hit_window_value as u8)
+                    format!("Judge {}", renderer.resources.settings.hit_window_value as u8)
                 }
             };
 

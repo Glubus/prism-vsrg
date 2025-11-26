@@ -53,8 +53,8 @@ impl EditorStateController {
         let Some(target) = self.current_target else { return; };
         
         ctx.with_renderer(|renderer| {
-            let config = &mut renderer.skin.config;
-            let speed = if renderer.settings.is_open { 0.0 } else { 2.0 }; // Bloquer si settings ouverts (sécurité)
+            let config = &mut renderer.resources.skin.config;
+            let speed = if renderer.resources.settings.is_open { 0.0 } else { 2.0 }; // Bloquer si settings ouverts (sécurité)
 
             // Logique de modification selon le target
             match (target, self.current_mode) {
@@ -95,7 +95,7 @@ impl EditorStateController {
             }
             
             // Important : Mise à jour des positions réelles à l'écran
-            renderer.update_component_positions();
+            renderer.resources.update_component_positions(renderer.ctx.config.width as f32, renderer.ctx.config.height as f32);
         });
     }
 }
@@ -122,7 +122,7 @@ impl GameState for EditorStateController {
                 
                 UIAction::Back => {
                     // Quitter proprement
-                    ctx.with_renderer(|r| { r.editor_status_text = None; r.editor_values_text = None; });
+                    ctx.with_renderer(|r| { r.resources.editor_status_text = None; r.resources.editor_values_text = None; });
                     // On signale au logic de revenir au menu
                     ctx.send_to_logic(MainToLogic::Input(KeyAction::UI(UIAction::Back))); 
                     return StateTransition::Replace(Box::new(MenuStateController::new(Arc::clone(&self.menu_state))));
@@ -145,8 +145,8 @@ impl GameState for EditorStateController {
                 
                 KeyCode::KeyS => {
                     ctx.with_renderer(|renderer| {
-                        if let Err(e) = renderer.skin.save_user_config() { eprintln!("Error saving: {}", e); }
-                        renderer.editor_status_text = Some("SAVED!".to_string());
+                        if let Err(e) = renderer.resources.skin.save_user_config() { eprintln!("Error saving: {}", e); }
+                        renderer.resources.editor_status_text = Some("SAVED!".to_string());
                     });
                 }
                 _ => {}
@@ -161,10 +161,10 @@ impl GameState for EditorStateController {
         let mode_copy = self.current_mode;
         
         ctx.with_renderer(|renderer| {
-            let config = &renderer.skin.config;
+            let config = &renderer.resources.skin.config;
 
             if let Some(target) = target_copy {
-                renderer.editor_status_text = Some(format!("EDIT: {} [{}]", target, mode_copy));
+                renderer.resources.editor_status_text = Some(format!("EDIT: {} [{}]", target, mode_copy));
                 
                 // CORRECTION : On lit et formate les vraies valeurs
                 let values_str = match target {
@@ -196,10 +196,10 @@ impl GameState for EditorStateController {
                     }
                 };
                 
-                renderer.editor_values_text = Some(values_str);
+                renderer.resources.editor_values_text = Some(values_str);
             } else {
-                renderer.editor_status_text = Some("SELECT: W(Note) X(Rec) C(Cmb) V(Scr) B(Acc) N(Judg) K(Bar) | S(Save)".to_string());
-                renderer.editor_values_text = Some("Press key to select element".to_string());
+                renderer.resources.editor_status_text = Some("SELECT: W(Note) X(Rec) C(Cmb) V(Scr) B(Acc) N(Judg) K(Bar) | S(Save)".to_string());
+                renderer.resources.editor_values_text = Some("Press key to select element".to_string());
             }
         });
         StateTransition::None

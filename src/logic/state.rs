@@ -1,0 +1,264 @@
+use crate::input::events::{GameAction, EditorTarget, EditMode};
+use crate::shared::snapshot::{RenderState, GameplaySnapshot, EditorSnapshot}; 
+use crate::models::menu::{MenuState, GameResultData};
+use crate::models::settings::{SettingsState, HitWindowMode};
+use crate::logic::engine::GameEngine;
+use crate::database::{DbManager, DbStatus};
+
+enum AppState {
+    Menu(MenuState),
+    Game(GameEngine),
+    Editor {
+        engine: GameEngine,
+        target: Option<EditorTarget>,
+        mode: EditMode, // On stocke le mode courant ici
+        modification_buffer: Option<(f32, f32)>,
+        save_requested: bool,
+    },
+    Result(GameResultData),
+}
+
+pub struct GlobalState {
+    current_state: AppState,
+    db_manager: DbManager,
+    last_db_beatmap_count: usize,
+    settings: SettingsState,
+}
+
+impl GlobalState {
+    pub fn new(db_manager: DbManager) -> Self {
+        log::info!("LOGIC: Initializing Global State");
+        let settings = SettingsState::load();
+        let menu = MenuState::new();
+        
+        Self {
+            current_state: AppState::Menu(menu),
+            db_manager,
+            last_db_beatmap_count: 0,
+            settings,
+        }
+    }
+
+    pub fn resize(&mut self, _w: u32, _h: u32) {}
+    pub fn shutdown(&mut self) {}
+
+    pub fn update(&mut self, dt: f64) {
+        self.sync_db_to_menu();
+
+        let mut next_state = None;
+
+        match &mut self.current_state {
+            AppState::Menu(_) => {},
+            AppState::Game(engine) => {
+                engine.update(dt);
+                if engine.is_finished() {
+                    let result = GameResultData {
+                        hit_stats: engine.hit_stats.clone(),
+                        replay_data: engine.replay_data.clone(),
+                        score: engine.score,
+                        accuracy: engine.hit_stats.calculate_accuracy(),
+                        max_combo: engine.max_combo,
+                        beatmap_hash: None, 
+                        rate: engine.rate,
+                        judge_text: self.get_hit_window_text(),
+                    };
+                    next_state = Some(AppState::Result(result));
+                }
+            },
+            AppState::Editor { engine, modification_buffer: _, save_requested, .. } => {
+                *save_requested = false;
+            },
+            AppState::Result(_) => {}
+        }
+
+        if let Some(state) = next_state {
+            self.current_state = state;
+        }
+    }
+
+    fn sync_db_to_menu(&mut self) {
+        let db_state_arc = self.db_manager.get_state();
+        if let Ok(guard) = db_state_arc.try_lock() {
+            match guard.status {
+                DbStatus::Idle => {
+                    if guard.beatmapsets.len() != self.last_db_beatmap_count {
+                        if let AppState::Menu(menu) = &mut self.current_state {
+                            menu.beatmapsets = guard.beatmapsets.clone();
+                            menu.start_index = 0;
+                            menu.end_index = menu.visible_count.min(menu.beatmapsets.len());
+                            menu.selected_index = 0;
+                            menu.selected_difficulty_index = 0;
+                        }
+                        self.last_db_beatmap_count = guard.beatmapsets.len();
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn get_hit_window_text(&self) -> String {
+        match self.settings.hit_window_mode {
+            HitWindowMode::OsuOD => format!("OD {:.1}", self.settings.hit_window_value),
+            HitWindowMode::EtternaJudge => format!("Judge {:.0}", self.settings.hit_window_value),
+        }
+    }
+
+    pub fn handle_action(&mut self, action: GameAction) {
+        let mut next_state = None;
+
+        match &mut self.current_state {
+            AppState::Menu(menu) => {
+                match action {
+                    GameAction::Navigation { x, y } => {
+                        if y < 0 { menu.move_up(); }
+                        if y > 0 { menu.move_down(); }
+                        if x < 0 { menu.previous_difficulty(); }
+                        if x > 0 { menu.next_difficulty(); }
+                    },
+                    GameAction::SetSelection(idx) => {
+                        if idx < menu.beatmapsets.len() {
+                            menu.selected_index = idx;
+                            menu.selected_difficulty_index = 0;
+                            if idx < menu.start_index {
+                                menu.start_index = idx;
+                                menu.end_index = (menu.start_index + menu.visible_count).min(menu.beatmapsets.len());
+                            } else if idx >= menu.end_index {
+                                menu.end_index = (idx + 1).min(menu.beatmapsets.len());
+                                menu.start_index = menu.end_index.saturating_sub(menu.visible_count);
+                            }
+                        }
+                    },
+                    GameAction::SetDifficulty(idx) => menu.selected_difficulty_index = idx,
+                    GameAction::Confirm => {
+                         if let Some(path) = menu.get_selected_beatmap_path() {
+                            let mut engine = GameEngine::new(path, menu.rate);
+                            engine.scroll_speed_ms = self.settings.scroll_speed;
+                            engine.update_hit_window(self.settings.hit_window_mode, self.settings.hit_window_value);
+                            next_state = Some(AppState::Game(engine));
+                        }
+                    },
+                    GameAction::ToggleEditor => {
+                        if let Some(path) = menu.get_selected_beatmap_path() {
+                            let mut engine = GameEngine::new(path, 1.0);
+                            engine.scroll_speed_ms = self.settings.scroll_speed;
+                            engine.update_hit_window(self.settings.hit_window_mode, self.settings.hit_window_value);
+                            
+                            next_state = Some(AppState::Editor {
+                                engine,
+                                target: None,
+                                mode: EditMode::Move, // Mode par défaut
+                                modification_buffer: None,
+                                save_requested: false,
+                            });
+                        }
+                    },
+                    GameAction::TabNext => menu.increase_rate(),
+                    GameAction::TabPrev => menu.decrease_rate(),
+                    GameAction::ToggleSettings => menu.show_settings = !menu.show_settings,
+                    GameAction::Rescan => {
+                        self.db_manager.rescan();
+                        self.last_db_beatmap_count = 0; 
+                    },
+                    _ => {}
+                }
+            },
+            AppState::Game(engine) => {
+                if action == GameAction::Back {
+                    engine.audio_manager.stop();
+                    let mut new_menu = MenuState::new();
+                    self.last_db_beatmap_count = 0; 
+                    next_state = Some(AppState::Menu(new_menu));
+                } else {
+                    engine.handle_input(action);
+                }
+            },
+            AppState::Editor { engine, target, mode, modification_buffer, save_requested } => {
+                match action {
+                    GameAction::Back => {
+                        engine.audio_manager.stop();
+                        let mut new_menu = MenuState::new();
+                        self.last_db_beatmap_count = 0;
+                        next_state = Some(AppState::Menu(new_menu));
+                    },
+                    GameAction::EditorSelect(t) => {
+                        if *target == Some(t) {
+                            // Si même cible, on bascule le mode
+                            *mode = match *mode {
+                                EditMode::Resize => EditMode::Move,
+                                EditMode::Move => EditMode::Resize,
+                            };
+                        } else {
+                            // Nouvelle cible, mode par défaut intelligent
+                            *target = Some(t);
+                            *mode = match t {
+                                EditorTarget::Notes | EditorTarget::Receptors | EditorTarget::HitBar => EditMode::Resize,
+                                _ => EditMode::Move,
+                            };
+                        }
+                    },
+                    GameAction::Navigation { x, y } => {
+                        if target.is_some() {
+                            *modification_buffer = Some((x as f32, y as f32));
+                        }
+                    },
+                    GameAction::EditorSave => *save_requested = true,
+                    GameAction::Hit { column } => engine.handle_input(GameAction::Hit { column }),
+                    GameAction::Release { column } => engine.handle_input(GameAction::Release { column }),
+                    _ => {}
+                }
+            },
+            AppState::Result(_) => {
+                match action {
+                    GameAction::Back | GameAction::Confirm => {
+                        let mut new_menu = MenuState::new();
+                        self.last_db_beatmap_count = 0;
+                        next_state = Some(AppState::Menu(new_menu));
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        if let Some(state) = next_state {
+            self.current_state = state;
+        }
+    }
+
+    pub fn frame_end(&mut self) {
+        if let AppState::Editor { modification_buffer, save_requested, .. } = &mut self.current_state {
+            *modification_buffer = None;
+            *save_requested = false;
+        }
+    }
+
+    pub fn create_snapshot(&self) -> RenderState {
+        match &self.current_state {
+            AppState::Menu(menu) => RenderState::Menu(menu.clone()),
+            AppState::Game(engine) => RenderState::InGame(engine.get_snapshot()),
+            AppState::Editor { engine, target, mode, modification_buffer, save_requested } => {
+                let modification = if let (Some(t), Some((dx, dy))) = (target, modification_buffer) {
+                    Some((*t, *mode, *dx, *dy))
+                } else {
+                    None
+                };
+                
+                let status_text = if let Some(t) = target {
+                    format!("EDIT: {:?} [{}]", t, mode)
+                } else {
+                    "SELECT: W(Note) X(Rec) C(Cmb) V(Scr) B(Acc) N(Judg) K(Bar) | S(Save)".to_string()
+                };
+
+                RenderState::Editor(EditorSnapshot {
+                    game: engine.get_snapshot(),
+                    target: *target,
+                    mode: *mode, // On passe le mode au renderer
+                    status_text,
+                    modification,
+                    save_requested: *save_requested,
+                })
+            },
+            AppState::Result(res) => RenderState::Result(res.clone()),
+        }
+    }
+}
