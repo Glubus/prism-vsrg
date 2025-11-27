@@ -1,29 +1,46 @@
-mod app;
-mod renderer;
-mod engine;
-mod playfield;
-mod components;
-mod skin;
-mod database;
-mod menu;
+mod input;
+mod logic;
+mod render;
+mod system;
 
-use winit::event_loop::{EventLoop, ControlFlow};
-use app::App;
+// Modules modèles/données (nécessaires)
+mod core;
+mod database;
+mod difficulty;
+mod models;
+mod shaders;
+mod shared;
+mod states;
+mod views;
+
+// mod renderer; // SUPPRIMÉ : L'ancien renderer est mort, vive le nouveau dans 'mod render' !
+
+use crate::database::DbManager;
+use crate::system::bus::SystemBus;
+use std::path::PathBuf;
 
 fn main() {
+    unsafe {
+        std::env::set_var("RUST_LOG", "info");
+    }
     env_logger::init();
-    
-    // Créer un runtime tokio global pour les opérations async
-    // On doit le garder en vie pendant toute la durée de l'application
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let _enter = rt.enter(); // Entrer dans le contexte du runtime
-    
-    let event_loop = EventLoop::new().unwrap();
-    event_loop.set_control_flow(ControlFlow::Poll); // Pour un jeu, on veut Poll (max FPS)
 
-    let mut app = App::new();
-    
-    // Winit 0.30 utilise run_app
-    // Le runtime tokio reste actif grâce à rt qui n'est pas drop
-    let _ = event_loop.run_app(&mut app);
+    log::info!("MAIN: Booting rVsrg 2.0...");
+
+    let bus = SystemBus::new();
+
+    let input_bus = bus.clone();
+    let logic_bus = bus.clone();
+    let render_bus = bus.clone();
+
+    let db_path = PathBuf::from("main.db");
+    let songs_path = PathBuf::from("songs");
+    let db_manager = DbManager::new(db_path, songs_path);
+
+    let input_manager = input::manager::InputManager::new();
+
+    input::start_thread(input_bus, input_manager);
+    logic::start_thread(logic_bus, db_manager);
+
+    render::app::App::run(render_bus);
 }

@@ -1,115 +1,149 @@
-use std::path::{Path, PathBuf};
-use std::fs;
 use crate::database::connection::Database;
-use crate::database::query::{insert_beatmapset, insert_beatmap};
+use crate::database::query::{insert_beatmap, insert_beatmapset};
+use crate::difficulty;
+use md5::Context;
+use std::fs;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 
 /// Scanne le dossier songs/ et remplit la base de données
-pub async fn scan_songs_directory(db: &Database, songs_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn scan_songs_directory(
+    db: &Database,
+    songs_path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
     if !songs_path.exists() {
         eprintln!("The songs/ directory does not exist");
         return Ok(());
     }
 
-    println!("Scanning maps in {:?}...", songs_path);
+    difficulty::init_global_calc()?;
 
     // Parcourir tous les dossiers dans songs/
     let entries = fs::read_dir(songs_path)?;
-    
+
     for entry in entries {
         let entry = entry?;
         let path = entry.path();
-        
+
         if !path.is_dir() {
             continue;
         }
 
-        // Chercher tous les fichiers .osu dans ce dossier
-        let osu_files: Vec<PathBuf> = match fs::read_dir(&path) {
-            Ok(dir) => dir
-                .filter_map(|e| e.ok())
-                .map(|e| e.path())
-                .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("osu"))
-                .collect(),
-            Err(_) => continue,
+        let osu_files = match collect_osu_files(&path) {
+            Some(files) if !files.is_empty() => files,
+            _ => continue,
         };
 
-        if osu_files.is_empty() {
-            continue;
-        }
-
-        // Utiliser le premier fichier .osu pour les métadonnées du beatmapset
-        let first_osu = &osu_files[0];
-        
-        // Charger la map avec rosu-map
-        match rosu_map::Beatmap::from_path(first_osu) {
-            Ok(map) => {
-                // Extraire les métadonnées depuis la map
-                let title = map.title.clone();
-                let artist = map.artist.clone();
-                
-                // Chercher l'image de fond dans les events
-                let background_filename = map.background_file.clone();
-                let image_path = if !background_filename.is_empty() {
-                    find_background_image(&path, Some(background_filename.as_str()))
-                } else {
-                    None
-                };
-                
-                // Insérer le beatmapset
-                let path_str = match path.to_str() {
-                    Some(s) => s,
-                    None => continue,
-                };
-                let beatmapset_id = match insert_beatmapset(
-                    db.pool(),
-                    path_str,
-                    image_path.as_deref(),
-                    Some(artist.as_str()),
-                    Some(title.as_str()),
-                ).await {
-                    Ok(id) => id,
-                    Err(e) => {
-                        eprintln!("Error inserting beatmapset: {}", e);
-                        continue;
-                    }
-                };
-
-                // Insérer toutes les beatmaps
-                for osu_file in &osu_files {
-                    match rosu_map::Beatmap::from_path(osu_file) {
-                        Ok(bm) => {
-                            // Compter les notes (seulement les circles pour l'instant)
-                            let note_count = bm.hit_objects.iter()
-                                .filter(|ho| matches!(ho.kind, rosu_map::section::hit_objects::HitObjectKind::Circle(_)))
-                                .count() as i32;
-                            
-                            let difficulty_name = bm.version.clone();
-                            
-                            if let Some(osu_str) = osu_file.to_str() {
-                                if let Err(e) = insert_beatmap(
-                                    db.pool(),
-                                    beatmapset_id,
-                                    osu_str,
-                                    Some(&difficulty_name),
-                                    note_count,
-                                ).await {
-                                    eprintln!("Error inserting beatmap: {}", e);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("Error loading {:?}: {}", osu_file, e);
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("Error loading {:?}: {}", first_osu, e);
-            }
+        if let Err(e) = process_beatmapset(db, &path, &osu_files).await {
+            eprintln!("Error processing beatmapset {:?}: {}", path, e);
         }
     }
 
-    println!("Scan completed!");
+    Ok(())
+}
+
+fn collect_osu_files(path: &Path) -> Option<Vec<PathBuf>> {
+    let entries = fs::read_dir(path).ok()?;
+    let files = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("osu"))
+        .collect::<Vec<_>>();
+    Some(files)
+}
+
+async fn process_beatmapset(
+    db: &Database,
+    folder: &Path,
+    osu_files: &[PathBuf],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(first_osu) = osu_files.first() else {
+        return Ok(());
+    };
+
+    let map = rosu_map::Beatmap::from_path(first_osu)?;
+    let title = map.title.clone();
+    let artist = map.artist.clone();
+    let image_path = if map.background_file.is_empty() {
+        None
+    } else {
+        find_background_image(folder, Some(map.background_file.as_str()))
+    };
+
+    let Some(path_str) = folder.to_str() else {
+        return Ok(());
+    };
+
+    let beatmapset_id = insert_beatmapset(
+        db.pool(),
+        path_str,
+        image_path.as_deref(),
+        Some(artist.as_str()),
+        Some(title.as_str()),
+    )
+    .await?;
+
+    for osu_file in osu_files {
+        if let Err(e) = process_osu_file(db, beatmapset_id, osu_file).await {
+            eprintln!("Error processing {:?}: {}", osu_file, e);
+        }
+    }
+
+    Ok(())
+}
+
+async fn process_osu_file(
+    db: &Database,
+    beatmapset_id: i64,
+    osu_file: &PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let hash = calculate_file_hash(osu_file)?;
+    let bm = rosu_map::Beatmap::from_path(osu_file)?;
+
+    let note_count = bm
+        .hit_objects
+        .iter()
+        .filter(|ho| {
+            matches!(
+                ho.kind,
+                rosu_map::section::hit_objects::HitObjectKind::Circle(_)
+            )
+        })
+        .count() as i32;
+
+    let difficulty_name = bm.version.clone();
+    let difficulty_info = difficulty::analyze(&bm)?;
+
+    if let Some(osu_str) = osu_file.to_str() {
+        insert_beatmap(
+            db.pool(),
+            beatmapset_id,
+            &hash,
+            osu_str,
+            Some(&difficulty_name),
+            note_count,
+            difficulty_info.duration_ms,
+            difficulty_info.nps,
+        )
+        .await?;
+
+        for rating in &difficulty_info.ratings {
+            db.upsert_beatmap_rating(
+                &hash,
+                &rating.name,
+                rating.ssr.overall,
+                rating.ssr.stream,
+                rating.ssr.jumpstream,
+                rating.ssr.handstream,
+                rating.ssr.stamina,
+                rating.ssr.jackspeed,
+                rating.ssr.chordjack,
+                rating.ssr.technical,
+            )
+            .await?;
+        }
+    }
+
     Ok(())
 }
 
@@ -124,4 +158,16 @@ fn find_background_image(beatmapset_path: &Path, filename: Option<&str>) -> Opti
     })
 }
 
+/// Calcule le hash MD5 d'un fichier .osu
+fn calculate_file_hash(file_path: &Path) -> Result<String, std::io::Error> {
+    let mut file = fs::File::open(file_path)?;
+    let mut buffer = String::new();
+    file.read_to_string(&mut buffer)?;
 
+    let mut context = Context::new();
+    context.consume(buffer.as_bytes());
+    let result = context.finalize();
+    let hash_string = format!("{:x}", result);
+
+    Ok(hash_string)
+}
