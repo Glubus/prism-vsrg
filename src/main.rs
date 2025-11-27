@@ -6,8 +6,8 @@ mod system;
 // Modules modèles/données (nécessaires)
 mod core;
 mod database;
-mod models;
 mod difficulty;
+mod models;
 mod shaders;
 mod shared;
 mod states;

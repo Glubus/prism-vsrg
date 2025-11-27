@@ -22,6 +22,7 @@ impl BeatmapInfo {
         rate: f64,
         hit_window_mode: HitWindowMode,
         hit_window_value: f64,
+        override_ratings: Option<&[BeatmapRating]>,
     ) {
         egui::Frame::default()
             .corner_radius(5.0)
@@ -81,7 +82,8 @@ impl BeatmapInfo {
                 ui.separator();
                 ui.add_space(5.0);
 
-                let ratings_slice = beatmap.map(|bm| bm.ratings.as_slice());
+                let ratings_slice =
+                    override_ratings.or_else(|| beatmap.map(|bm| bm.ratings.as_slice()));
                 let etterna_rating = find_rating(ratings_slice, "etterna");
                 let osu_rating = find_rating(ratings_slice, "osu");
 
@@ -176,11 +178,14 @@ fn render_ssr_details(ui: &mut Ui, rating: &BeatmapRating) {
         ("Technical", rating.technical),
     ];
 
-    Grid::new("ssr_grid").num_columns(2).spacing([40.0, 6.0]).show(ui, |ui| {
-        for (label, value) in metrics {
-            ui.label(RichText::new(label).strong());
-            ui.label(format!("{:.2}", value));
-            ui.end_row();
-        }
-    });
+    Grid::new("ssr_grid")
+        .num_columns(2)
+        .spacing([40.0, 6.0])
+        .show(ui, |ui| {
+            for (label, value) in metrics {
+                ui.label(RichText::new(label).strong());
+                ui.label(format!("{:.2}", value));
+                ui.end_row();
+            }
+        });
 }

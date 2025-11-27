@@ -2,6 +2,7 @@ use crate::database::connection::Database;
 use crate::database::models::{BeatmapWithRatings, Beatmapset};
 use crate::database::query::{clear_all, get_all_beatmapsets};
 use crate::database::scanner::scan_songs_directory;
+use crate::models::search::MenuSearchFilters;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -12,6 +13,7 @@ pub enum DbStatus {
     Idle,
     Initializing,
     Loading,
+    Searching,
     Scanning { current: usize, total: usize },
     Error(String),
 }
@@ -21,6 +23,7 @@ pub struct DbState {
     pub status: DbStatus,
     pub beatmapsets: Vec<(Beatmapset, Vec<BeatmapWithRatings>)>,
     pub error: Option<String>,
+    pub version: u64,
 }
 
 impl DbState {
@@ -29,6 +32,7 @@ impl DbState {
             status: DbStatus::Idle,
             beatmapsets: Vec::new(),
             error: None,
+            version: 0,
         }
     }
 }
@@ -38,6 +42,7 @@ pub enum DbCommand {
     Init,
     Load,
     Rescan,
+    Search(MenuSearchFilters),
     Shutdown,
 }
 
@@ -113,6 +118,11 @@ impl DbManager {
                         Self::rescan_maps(&state, d, &songs_path).await;
                     }
                 }
+                Ok(DbCommand::Search(filters)) => {
+                    if let Some(ref d) = db {
+                        Self::search_maps(&state, d, filters).await;
+                    }
+                }
                 Ok(DbCommand::Shutdown) => {
                     break;
                 }
@@ -143,6 +153,7 @@ impl DbManager {
                 s.beatmapsets = beatmapsets;
                 s.status = DbStatus::Idle;
                 s.error = None;
+                s.version = s.version.wrapping_add(1);
             }
             Err(e) => {
                 let mut s = state.lock().unwrap();
@@ -190,6 +201,29 @@ impl DbManager {
         Self::load_maps(state, db).await;
     }
 
+    async fn search_maps(state: &Arc<Mutex<DbState>>, db: &Database, filters: MenuSearchFilters) {
+        {
+            let mut s = state.lock().unwrap();
+            s.status = DbStatus::Searching;
+            s.error = None;
+        }
+
+        match db.search_beatmapsets(&filters).await {
+            Ok(beatmapsets) => {
+                let mut s = state.lock().unwrap();
+                s.beatmapsets = beatmapsets;
+                s.status = DbStatus::Idle;
+                s.error = None;
+                s.version = s.version.wrapping_add(1);
+            }
+            Err(e) => {
+                let mut s = state.lock().unwrap();
+                s.status = DbStatus::Error(format!("Search error: {}", e));
+                s.error = Some(format!("{}", e));
+            }
+        }
+    }
+
     pub fn get_state(&self) -> Arc<Mutex<DbState>> {
         Arc::clone(&self.state)
     }
@@ -211,5 +245,9 @@ impl DbManager {
 
     pub fn rescan(&self) {
         let _ = self.send_command(DbCommand::Rescan);
+    }
+
+    pub fn search(&self, filters: MenuSearchFilters) {
+        let _ = self.send_command(DbCommand::Search(filters));
     }
 }

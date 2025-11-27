@@ -1,4 +1,5 @@
 use crate::database::models::{Beatmap, BeatmapRating, BeatmapWithRatings, Beatmapset, Replay};
+use crate::models::search::MenuSearchFilters;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
 
@@ -169,9 +170,7 @@ pub async fn get_ratings_for_beatmap(
 }
 
 /// Récupère tous les ratings
-pub async fn get_all_beatmap_ratings(
-    pool: &SqlitePool,
-) -> Result<Vec<BeatmapRating>, sqlx::Error> {
+pub async fn get_all_beatmap_ratings(pool: &SqlitePool) -> Result<Vec<BeatmapRating>, sqlx::Error> {
     let ratings: Vec<BeatmapRating> = sqlx::query_as(
         "SELECT id, beatmap_hash, name, overall, stream, jumpstream, handstream, stamina, jackspeed, chordjack, technical FROM beatmap_rating",
     )
@@ -215,6 +214,61 @@ pub async fn get_all_beatmapsets(
                 BeatmapWithRatings::new(beatmap, ratings)
             })
             .collect();
+
+        result.push((beatmapset, with_ratings));
+    }
+
+    Ok(result)
+}
+
+pub async fn search_beatmapsets(
+    pool: &SqlitePool,
+    filters: &MenuSearchFilters,
+) -> Result<Vec<(Beatmapset, Vec<BeatmapWithRatings>)>, sqlx::Error> {
+    let query_text = filters.query.to_lowercase();
+    let query_like = format!("%{}%", query_text);
+    let min_rating = filters.min_rating.unwrap_or(0.0);
+    let max_duration_ms = filters
+        .max_duration_seconds
+        .map(|s| (s * 1000.0) as i32)
+        .unwrap_or(0);
+
+    let beatmapsets: Vec<Beatmapset> = sqlx::query_as(
+        r#"
+        SELECT DISTINCT bs.id, bs.path, bs.image_path, bs.artist, bs.title
+        FROM beatmapset bs
+        JOIN beatmap b ON b.beatmapset_id = bs.id
+        LEFT JOIN beatmap_rating br ON br.beatmap_hash = b.hash AND br.name = 'etterna'
+        WHERE
+            (?1 = '' OR LOWER(bs.title) LIKE ?2 OR LOWER(bs.artist) LIKE ?2 OR LOWER(IFNULL(b.difficulty_name, '')) LIKE ?2)
+            AND (?3 <= 0 OR IFNULL(br.overall, 0) >= ?3)
+            AND (?4 <= 0 OR b.duration_ms <= ?4)
+        ORDER BY bs.artist, bs.title
+        LIMIT 500
+        "#,
+    )
+    .bind(query_text.trim())
+    .bind(query_like)
+    .bind(min_rating)
+    .bind(max_duration_ms)
+    .fetch_all(pool)
+    .await?;
+
+    let mut result = Vec::new();
+
+    for beatmapset in beatmapsets {
+        let beatmaps: Vec<Beatmap> = sqlx::query_as(
+            "SELECT hash, beatmapset_id, path, difficulty_name, note_count, duration_ms, nps FROM beatmap WHERE beatmapset_id = ?1 ORDER BY difficulty_name",
+        )
+        .bind(beatmapset.id)
+        .fetch_all(pool)
+        .await?;
+
+        let mut with_ratings = Vec::new();
+        for beatmap in beatmaps {
+            let ratings = get_ratings_for_beatmap(pool, &beatmap.hash).await?;
+            with_ratings.push(BeatmapWithRatings::new(beatmap, ratings));
+        }
 
         result.push((beatmapset, with_ratings));
     }

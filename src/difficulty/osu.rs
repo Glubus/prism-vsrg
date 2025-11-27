@@ -16,9 +16,7 @@ pub fn calculate_difficulty(
     let map = rosu_pp::Beatmap::from_str(&map_str)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
-    let diff_attrs = rosu_pp::Difficulty::new()
-        .clock_rate(rate)
-        .calculate(&map);
+    let diff_attrs = rosu_pp::Difficulty::new().clock_rate(rate).calculate(&map);
     let sr = diff_attrs.stars() as f64;
 
     let weight = |value: f64| -> f64 {

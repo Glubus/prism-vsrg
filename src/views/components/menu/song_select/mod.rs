@@ -2,6 +2,7 @@ pub(super) mod beatmap_info;
 pub(super) mod difficulty_card;
 pub(super) mod leaderboard;
 pub(super) mod leaderboard_card;
+pub(super) mod search_panel;
 pub(super) mod song_card;
 pub(super) mod song_list;
 
@@ -14,8 +15,10 @@ use winit::dpi::PhysicalSize;
 
 use crate::core::input::actions::UIAction;
 use crate::models::menu::{GameResultData, MenuState}; // Ajout de GameResultData
+use crate::models::search::MenuSearchFilters;
 use crate::views::components::menu::song_select::beatmap_info::BeatmapInfo;
 use crate::views::components::menu::song_select::leaderboard::{Leaderboard, ScoreCard};
+use crate::views::components::menu::song_select::search_panel::{SearchPanel, SearchPanelEvent};
 use crate::views::components::menu::song_select::song_list::SongList;
 
 pub struct CurrentBackground {
@@ -27,6 +30,7 @@ pub struct SongSelectScreen {
     song_list: SongList,
     leaderboard: Leaderboard,
     beatmap_info: BeatmapInfo,
+    search_panel: SearchPanel,
     current_background_image: Option<CurrentBackground>,
     current_beatmap_hash: Option<String>,
 }
@@ -37,6 +41,7 @@ impl SongSelectScreen {
             song_list: SongList::new(),
             leaderboard: Leaderboard::new(),
             beatmap_info: BeatmapInfo::new(),
+            search_panel: SearchPanel::new(),
             current_background_image: None,
             current_beatmap_hash: None,
         }
@@ -105,11 +110,16 @@ impl SongSelectScreen {
         diff_sel_tex: Option<TextureId>,
         song_sel_color: Color32,
         diff_sel_color: Color32,
-    ) -> (Option<UIAction>, Option<GameResultData>) {
+    ) -> (
+        Option<UIAction>,
+        Option<GameResultData>,
+        Option<MenuSearchFilters>,
+    ) {
         self.song_list.set_current(menu_state.selected_index);
 
         let mut action_triggered = None;
         let mut result_data_triggered = None;
+        let mut search_request = None;
 
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
@@ -127,27 +137,25 @@ impl SongSelectScreen {
                                     let bm = beatmaps.get(menu_state.selected_difficulty_index);
                                     let diff_name =
                                         bm.and_then(|bm| bm.beatmap.difficulty_name.clone());
-                                    (
-                                        Some(bs.clone()),
-                                        bm.cloned(),
-                                        menu_state.rate,
-                                        diff_name,
-                                    )
+                                    (Some(bs.clone()), bm.cloned(), menu_state.rate, diff_name)
                                 } else {
                                     (None, None, 1.0, None)
                                 }
                             };
 
                             if let Some(bs) = &beatmapset {
-                                self.beatmap_info
-                                    .render(
-                                        ui,
-                                        bs,
-                                        beatmap.as_ref(),
-                                        rate,
-                                        hit_window_mode,
-                                        hit_window_value,
-                                    );
+                                let rate_specific_ratings = beatmap.as_ref().and_then(|bm| {
+                                    menu_state.get_cached_ratings_for(&bm.beatmap.hash, rate)
+                                });
+                                self.beatmap_info.render(
+                                    ui,
+                                    bs,
+                                    beatmap.as_ref(),
+                                    rate,
+                                    hit_window_mode,
+                                    hit_window_value,
+                                    rate_specific_ratings,
+                                );
                                 ui.add_space(10.0);
                             }
 
@@ -169,17 +177,26 @@ impl SongSelectScreen {
                                 .size(Size::relative(0.1))
                                 .vertical(|mut strip| {
                                     strip.cell(|ui| {
-                                        // On propage l'action
-                                        action_triggered = self.song_list.render(
-                                            ui,
-                                            menu_state,
-                                            btn_tex,
-                                            btn_sel_tex,
-                                            diff_tex,
-                                            diff_sel_tex,
-                                            song_sel_color,
-                                            diff_sel_color,
-                                        );
+                                        ui.vertical(|ui| {
+                                            match self.search_panel.render(ui, menu_state) {
+                                                SearchPanelEvent::Apply(filters) => {
+                                                    search_request = Some(filters);
+                                                }
+                                                SearchPanelEvent::None => {}
+                                            }
+
+                                            ui.add_space(8.0);
+                                            action_triggered = self.song_list.render(
+                                                ui,
+                                                menu_state,
+                                                btn_tex,
+                                                btn_sel_tex,
+                                                diff_tex,
+                                                diff_sel_tex,
+                                                song_sel_color,
+                                                diff_sel_color,
+                                            );
+                                        });
                                     });
 
                                     strip.cell(|ui| {
@@ -203,7 +220,7 @@ impl SongSelectScreen {
                     })
             });
 
-        (action_triggered, result_data_triggered)
+        (action_triggered, result_data_triggered, search_request)
     }
 
     fn render_beatmap_footer(&mut self, ui: &mut egui::Ui, menu_state: &MenuState) {

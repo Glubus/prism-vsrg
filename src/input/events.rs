@@ -1,3 +1,4 @@
+use crate::models::search::MenuSearchFilters;
 use std::collections::HashMap;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
@@ -60,7 +61,7 @@ impl std::fmt::Display for EditMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum GameAction {
     // Gameplay
     Hit { column: usize },
@@ -92,6 +93,7 @@ pub enum GameAction {
 
     // DB
     Rescan,
+    ApplySearch(MenuSearchFilters),
 }
 
 #[derive(Debug, Clone)]

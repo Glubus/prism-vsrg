@@ -56,9 +56,13 @@ impl InputManager {
         }
 
         if let Some(base_action) = self.bindings.get(&event.keycode) {
-            match (event.state, *base_action) {
-                (ElementState::Pressed, GameAction::Hit { column }) => Some(GameAction::Hit { column }),
-                (ElementState::Released, GameAction::Hit { column }) => Some(GameAction::Release { column }),
+            match (event.state, base_action.clone()) {
+                (ElementState::Pressed, GameAction::Hit { column }) => {
+                    Some(GameAction::Hit { column })
+                }
+                (ElementState::Released, GameAction::Hit { column }) => {
+                    Some(GameAction::Release { column })
+                }
                 (ElementState::Pressed, action) => Some(action),
                 _ => None,
             }

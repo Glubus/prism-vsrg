@@ -103,7 +103,12 @@ async fn process_osu_file(
     let note_count = bm
         .hit_objects
         .iter()
-        .filter(|ho| matches!(ho.kind, rosu_map::section::hit_objects::HitObjectKind::Circle(_)))
+        .filter(|ho| {
+            matches!(
+                ho.kind,
+                rosu_map::section::hit_objects::HitObjectKind::Circle(_)
+            )
+        })
         .count() as i32;
 
     let difficulty_name = bm.version.clone();

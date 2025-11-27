@@ -134,7 +134,6 @@ impl SongList {
                         }
 
                         if sense.clicked() || sense.double_clicked() {
-                            // On émet l'action au lieu de changer l'état
                             action_triggered = Some(UIAction::SetSelection(id));
                             response.scroll_to_me(Some(Align::Center));
 

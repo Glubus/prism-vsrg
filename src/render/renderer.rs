@@ -182,7 +182,7 @@ impl Renderer {
                 };
                 let dummy_win = crate::models::engine::hit_window::HitWindow::new();
 
-                let (action_opt, _) = self.song_select_screen.render(
+                let (action_opt, _, search_opt) = self.song_select_screen.render(
                     &ctx_egui,
                     menu_state,
                     &view,
@@ -207,6 +207,10 @@ impl Renderer {
                     to_egui(colors.selected_color),
                     to_egui(colors.difficulty_selected_color),
                 );
+
+                if let Some(filters) = search_opt {
+                    actions_to_send.push(GameAction::ApplySearch(filters));
+                }
 
                 if let Some(a) = action_opt {
                     match a {

@@ -22,7 +22,7 @@ enum AppState {
 pub struct GlobalState {
     current_state: AppState,
     db_manager: DbManager,
-    last_db_beatmap_count: usize,
+    last_db_version: u64,
     settings: SettingsState,
     input_cmd_tx: Sender<InputCommand>,
 }
@@ -36,7 +36,7 @@ impl GlobalState {
         Self {
             current_state: AppState::Menu(menu),
             db_manager,
-            last_db_beatmap_count: 0,
+            last_db_version: 0,
             settings,
             input_cmd_tx,
         }
@@ -51,7 +51,9 @@ impl GlobalState {
         let mut next_state = None;
 
         match &mut self.current_state {
-            AppState::Menu(_) => {}
+            AppState::Menu(menu) => {
+                menu.ensure_selected_rate_cache();
+            }
             AppState::Game(engine) => {
                 engine.update(dt);
                 if engine.is_finished() {
@@ -87,20 +89,15 @@ impl GlobalState {
     fn sync_db_to_menu(&mut self) {
         let db_state_arc = self.db_manager.get_state();
         if let Ok(guard) = db_state_arc.try_lock() {
-            match guard.status {
-                DbStatus::Idle => {
-                    if guard.beatmapsets.len() != self.last_db_beatmap_count {
-                        if let AppState::Menu(menu) = &mut self.current_state {
-                            menu.beatmapsets = guard.beatmapsets.clone();
-                            menu.start_index = 0;
-                            menu.end_index = menu.visible_count.min(menu.beatmapsets.len());
-                            menu.selected_index = 0;
-                            menu.selected_difficulty_index = 0;
-                        }
-                        self.last_db_beatmap_count = guard.beatmapsets.len();
-                    }
+            if matches!(guard.status, DbStatus::Idle) && guard.version != self.last_db_version {
+                if let AppState::Menu(menu) = &mut self.current_state {
+                    menu.beatmapsets = guard.beatmapsets.clone();
+                    menu.start_index = 0;
+                    menu.end_index = menu.visible_count.min(menu.beatmapsets.len());
+                    menu.selected_index = 0;
+                    menu.selected_difficulty_index = 0;
                 }
-                _ => {}
+                self.last_db_version = guard.version;
             }
         }
     }
@@ -192,7 +189,11 @@ impl GlobalState {
                     }
                     GameAction::Rescan => {
                         self.db_manager.rescan();
-                        self.last_db_beatmap_count = 0;
+                        self.last_db_version = u64::MAX;
+                    }
+                    GameAction::ApplySearch(filters) => {
+                        menu.search_filters = filters.clone();
+                        self.db_manager.search(filters);
                     }
                     _ => {}
                 }
@@ -201,7 +202,7 @@ impl GlobalState {
                 GameAction::Back => {
                     engine.audio_manager.stop();
                     let new_menu = MenuState::new();
-                    self.last_db_beatmap_count = 0;
+                    self.last_db_version = u64::MAX;
                     next_state = Some(AppState::Menu(new_menu));
                 }
                 GameAction::UpdateVolume(value) => {
@@ -223,7 +224,7 @@ impl GlobalState {
                     GameAction::Back => {
                         engine.audio_manager.stop();
                         let new_menu = MenuState::new();
-                        self.last_db_beatmap_count = 0;
+                        self.last_db_version = u64::MAX;
                         next_state = Some(AppState::Menu(new_menu));
                     }
                     GameAction::EditorSelect(t) => {
@@ -264,7 +265,7 @@ impl GlobalState {
             AppState::Result(_) => match action {
                 GameAction::Back | GameAction::Confirm => {
                     let new_menu = MenuState::new();
-                    self.last_db_beatmap_count = 0;
+                    self.last_db_version = u64::MAX;
                     next_state = Some(AppState::Menu(new_menu));
                 }
                 _ => {}

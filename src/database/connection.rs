@@ -159,6 +159,14 @@ impl Database {
         query::get_all_beatmapsets(&self.pool).await
     }
 
+    /// Recherche des beatmapsets en fonction des filtres
+    pub async fn search_beatmapsets(
+        &self,
+        filters: &crate::models::search::MenuSearchFilters,
+    ) -> Result<Vec<(Beatmapset, Vec<BeatmapWithRatings>)>, sqlx::Error> {
+        query::search_beatmapsets(&self.pool, filters).await
+    }
+
     /// Compte le nombre total de beatmapsets
     pub async fn count_beatmapsets(&self) -> Result<i32, sqlx::Error> {
         query::count_beatmapsets(&self.pool).await

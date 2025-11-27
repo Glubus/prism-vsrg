@@ -1,5 +1,5 @@
 use crate::difficulty::BeatmapSsr;
-use minacalc_rs::{Calc, HashMapCalcExt, OsuCalcExt, AllRates};
+use minacalc_rs::{AllRates, Calc, HashMapCalcExt, OsuCalcExt};
 use rosu_map::Beatmap;
 
 pub fn calculate_difficulty(
