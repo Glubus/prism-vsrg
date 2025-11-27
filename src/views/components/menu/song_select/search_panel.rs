@@ -1,7 +1,7 @@
-use egui::{Button, Color32, Frame, Margin, RichText, Slider, Ui};
+use egui::{Color32, ComboBox, Frame, Margin, RichText, Slider, TextEdit, Ui};
 
 use crate::models::menu::MenuState;
-use crate::models::search::MenuSearchFilters;
+use crate::models::search::{MenuSearchFilters, RatingMetric, RatingSource};
 
 pub enum SearchPanelEvent {
     None,
@@ -10,23 +10,21 @@ pub enum SearchPanelEvent {
 
 pub struct SearchPanel {
     form_filters: MenuSearchFilters,
-    form_dirty: bool,
 }
 
 impl SearchPanel {
     pub fn new() -> Self {
         Self {
             form_filters: MenuSearchFilters::default(),
-            form_dirty: false,
         }
     }
 
     pub fn render(&mut self, ui: &mut Ui, menu_state: &MenuState) -> SearchPanelEvent {
-        if !self.form_dirty && self.form_filters != menu_state.search_filters {
+        if self.form_filters != menu_state.search_filters {
             self.form_filters = menu_state.search_filters.clone();
         }
 
-        let mut event = SearchPanelEvent::None;
+        let mut should_apply = false;
 
         Frame::default()
             .corner_radius(5.0)
@@ -38,102 +36,170 @@ impl SearchPanel {
                     ui.heading("Search");
                     if menu_state.search_filters.is_active() {
                         ui.label(
-                            RichText::new("Filtres actifs")
+                            RichText::new("Active filters")
                                 .size(14.0)
                                 .color(Color32::from_rgba_unmultiplied(120, 200, 255, 255)),
                         );
                     }
                 });
 
-                ui.add_space(6.0);
-
-                if ui
-                    .text_edit_singleline(&mut self.form_filters.query)
-                    .changed()
-                {
-                    self.form_dirty = true;
-                }
-
-                ui.add_space(6.0);
-                self.render_rating_filter(ui);
-                self.render_duration_filter(ui);
-
-                ui.add_space(8.0);
-
-                ui.horizontal(|ui| {
-                    let apply_enabled = self.form_dirty;
-                    let apply_button = ui.add_enabled(apply_enabled, Button::new("Appliquer"));
-                    if apply_button.clicked() {
-                        self.form_dirty = false;
-                        event = SearchPanelEvent::Apply(self.form_filters.clone());
-                    }
-
-                    if ui.button("Réinitialiser").clicked() {
-                        self.form_filters = MenuSearchFilters::default();
-                        self.form_dirty = false;
-                        event = SearchPanelEvent::Apply(self.form_filters.clone());
-                    }
-                });
-
                 ui.add_space(4.0);
-                ui.label(
-                    RichText::new(format!("Résultats: {}", menu_state.beatmapsets.len()))
-                        .size(14.0),
-                );
+                should_apply |= self.render_query(ui);
+                ui.add_space(4.0);
+                should_apply |= self.render_source_and_metric(ui);
+                ui.add_space(4.0);
+                should_apply |= self.render_rating_section(ui);
+                ui.add_space(4.0);
+                should_apply |= self.render_duration_section(ui);
             });
 
-        event
+        if should_apply {
+            SearchPanelEvent::Apply(self.form_filters.clone())
+        } else {
+            SearchPanelEvent::None
+        }
     }
 
-    fn render_rating_filter(&mut self, ui: &mut Ui) {
-        let mut enabled = self.form_filters.min_rating.is_some();
-        ui.horizontal(|ui| {
-            if ui.checkbox(&mut enabled, "Min rating (Etterna)").changed() {
-                if enabled {
-                    self.form_filters.min_rating =
-                        Some(self.form_filters.min_rating.unwrap_or(20.0));
-                } else {
-                    self.form_filters.min_rating = None;
-                }
-                self.form_dirty = true;
-            }
-
-            if enabled {
-                let mut value = self.form_filters.min_rating.unwrap_or(20.0) as f32;
-                if ui
-                    .add(Slider::new(&mut value, 0.0..=30.0).suffix(" MSD"))
-                    .changed()
-                {
-                    self.form_filters.min_rating = Some(value as f64);
-                    self.form_dirty = true;
-                }
-            }
-        });
+    fn render_query(&mut self, ui: &mut Ui) -> bool {
+        ui.add(
+            TextEdit::singleline(&mut self.form_filters.query)
+                .hint_text("Artist, title, or difficulty"),
+        )
+        .changed()
     }
 
-    fn render_duration_filter(&mut self, ui: &mut Ui) {
-        let mut enabled = self.form_filters.max_duration_seconds.is_some();
-        ui.horizontal(|ui| {
-            if ui.checkbox(&mut enabled, "Durée max (secondes)").changed() {
-                if enabled {
-                    self.form_filters.max_duration_seconds =
-                        Some(self.form_filters.max_duration_seconds.unwrap_or(180.0));
-                } else {
-                    self.form_filters.max_duration_seconds = None;
-                }
-                self.form_dirty = true;
-            }
+    fn render_source_and_metric(&mut self, ui: &mut Ui) -> bool {
+        let mut changed = false;
+        ui.horizontal_wrapped(|ui| {
+            ComboBox::from_label("Source")
+                .selected_text(match self.form_filters.rating_source {
+                    RatingSource::Etterna => "Etterna",
+                    RatingSource::Osu => "osu!",
+                })
+                .show_ui(ui, |ui| {
+                    changed |= ui
+                        .selectable_value(
+                            &mut self.form_filters.rating_source,
+                            RatingSource::Etterna,
+                            "Etterna",
+                        )
+                        .changed();
+                    changed |= ui
+                        .selectable_value(
+                            &mut self.form_filters.rating_source,
+                            RatingSource::Osu,
+                            "osu!",
+                        )
+                        .changed();
+                });
 
-            if enabled {
-                let mut duration = self.form_filters.max_duration_seconds.unwrap_or(180.0) as f32;
-                if ui
-                    .add(Slider::new(&mut duration, 30.0..=600.0).suffix("s"))
-                    .changed()
-                {
-                    self.form_filters.max_duration_seconds = Some(duration as f64);
-                    self.form_dirty = true;
-                }
-            }
+            ComboBox::from_label("Metric")
+                .selected_text(self.form_filters.rating_metric.display_name())
+                .show_ui(ui, |ui| {
+                    for metric in [
+                        RatingMetric::Overall,
+                        RatingMetric::Stream,
+                        RatingMetric::Jumpstream,
+                        RatingMetric::Handstream,
+                        RatingMetric::Stamina,
+                        RatingMetric::Jackspeed,
+                        RatingMetric::Chordjack,
+                        RatingMetric::Technical,
+                    ] {
+                        changed |= ui
+                            .selectable_value(
+                                &mut self.form_filters.rating_metric,
+                                metric.clone(),
+                                metric.display_name(),
+                            )
+                            .changed();
+                    }
+                });
         });
+        changed
+    }
+
+    fn render_rating_section(&mut self, ui: &mut Ui) -> bool {
+        let mut changed = false;
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                changed |= Self::toggle_slider(
+                    ui,
+                    "Min rating",
+                    &mut self.form_filters.min_rating,
+                    15.0,
+                    0.0..=50.0,
+                    " MSD",
+                );
+                changed |= Self::toggle_slider(
+                    ui,
+                    "Max rating",
+                    &mut self.form_filters.max_rating,
+                    30.0,
+                    0.0..=50.0,
+                    " MSD",
+                );
+            });
+        });
+        changed
+    }
+
+    fn render_duration_section(&mut self, ui: &mut Ui) -> bool {
+        let mut changed = false;
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                changed |= Self::toggle_slider(
+                    ui,
+                    "Min duration",
+                    &mut self.form_filters.min_duration_seconds,
+                    60.0,
+                    0.0..=600.0,
+                    "s",
+                );
+                changed |= Self::toggle_slider(
+                    ui,
+                    "Max duration",
+                    &mut self.form_filters.max_duration_seconds,
+                    240.0,
+                    0.0..=600.0,
+                    "s",
+                );
+            });
+        });
+        changed
+    }
+
+    fn toggle_slider(
+        ui: &mut Ui,
+        label: &str,
+        target: &mut Option<f64>,
+        default_value: f64,
+        range: std::ops::RangeInclusive<f32>,
+        suffix: &str,
+    ) -> bool {
+        let mut changed = false;
+        let mut active = target.is_some();
+
+        if ui.checkbox(&mut active, label).changed() {
+            if active {
+                *target = Some(default_value);
+            } else {
+                *target = None;
+            }
+            changed = true;
+        }
+
+        if active {
+            let mut value = target.unwrap_or(default_value) as f32;
+            if ui
+                .add(Slider::new(&mut value, range).suffix(suffix))
+                .changed()
+            {
+                *target = Some(value as f64);
+                changed = true;
+            }
+        }
+
+        changed
     }
 }

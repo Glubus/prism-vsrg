@@ -227,32 +227,58 @@ pub async fn search_beatmapsets(
 ) -> Result<Vec<(Beatmapset, Vec<BeatmapWithRatings>)>, sqlx::Error> {
     let query_text = filters.query.to_lowercase();
     let query_like = format!("%{}%", query_text);
-    let min_rating = filters.min_rating.unwrap_or(0.0);
+    let rating_column = filters.rating_metric.column_name();
+    let rating_source = filters.rating_source.as_str();
+
+    let min_rating_active = filters.min_rating.is_some() as i32;
+    let min_rating_value = filters.min_rating.unwrap_or(0.0);
+    let max_rating_active = filters.max_rating.is_some() as i32;
+    let max_rating_value = filters.max_rating.unwrap_or(0.0);
+
+    let min_duration_active = filters.min_duration_seconds.is_some() as i32;
+    let min_duration_ms = filters
+        .min_duration_seconds
+        .map(|s| (s * 1000.0) as i32)
+        .unwrap_or(0);
+
+    let max_duration_active = filters.max_duration_seconds.is_some() as i32;
     let max_duration_ms = filters
         .max_duration_seconds
         .map(|s| (s * 1000.0) as i32)
         .unwrap_or(0);
 
-    let beatmapsets: Vec<Beatmapset> = sqlx::query_as(
+    let sql = format!(
         r#"
         SELECT DISTINCT bs.id, bs.path, bs.image_path, bs.artist, bs.title
         FROM beatmapset bs
         JOIN beatmap b ON b.beatmapset_id = bs.id
-        LEFT JOIN beatmap_rating br ON br.beatmap_hash = b.hash AND br.name = 'etterna'
+        LEFT JOIN beatmap_rating br ON br.beatmap_hash = b.hash AND LOWER(br.name) = LOWER(?3)
         WHERE
             (?1 = '' OR LOWER(bs.title) LIKE ?2 OR LOWER(bs.artist) LIKE ?2 OR LOWER(IFNULL(b.difficulty_name, '')) LIKE ?2)
-            AND (?3 <= 0 OR IFNULL(br.overall, 0) >= ?3)
-            AND (?4 <= 0 OR b.duration_ms <= ?4)
+            AND (?4 = 0 OR IFNULL(br.{col}, 0) >= ?5)
+            AND (?6 = 0 OR IFNULL(br.{col}, 0) <= ?7)
+            AND (?8 = 0 OR b.duration_ms >= ?9)
+            AND (?10 = 0 OR b.duration_ms <= ?11)
         ORDER BY bs.artist, bs.title
         LIMIT 500
         "#,
-    )
-    .bind(query_text.trim())
-    .bind(query_like)
-    .bind(min_rating)
-    .bind(max_duration_ms)
-    .fetch_all(pool)
-    .await?;
+        col = rating_column
+    );
+
+    let beatmapsets: Vec<Beatmapset> = sqlx::query_as(&sql)
+        .bind(query_text.trim())
+        .bind(query_like)
+        .bind(rating_source)
+        .bind(min_rating_active)
+        .bind(min_rating_value)
+        .bind(max_rating_active)
+        .bind(max_rating_value)
+        .bind(min_duration_active)
+        .bind(min_duration_ms)
+        .bind(max_duration_active)
+        .bind(max_duration_ms)
+        .fetch_all(pool)
+        .await?;
 
     let mut result = Vec::new();
 

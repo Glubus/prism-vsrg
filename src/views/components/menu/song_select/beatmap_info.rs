@@ -1,4 +1,5 @@
-use egui::{Color32, Grid, RichText, Ui};
+use egui::{Color32, RichText, Ui};
+use std::borrow::Cow;
 
 use crate::database::models::{BeatmapRating, BeatmapWithRatings, Beatmapset};
 use crate::models::settings::HitWindowMode;
@@ -168,24 +169,53 @@ fn find_rating<'a>(
 }
 
 fn render_ssr_details(ui: &mut Ui, rating: &BeatmapRating) {
-    let metrics = [
-        ("Stream", rating.stream),
-        ("Jumpstream", rating.jumpstream),
-        ("Handstream", rating.handstream),
-        ("Stamina", rating.stamina),
-        ("JackSpeed", rating.jackspeed),
-        ("Chordjack", rating.chordjack),
-        ("Technical", rating.technical),
+    let pairs = [
+        (("Stream", "stream"), ("Jumpstream", "jumpstream")),
+        (("Jumpstream", "jumpstream"), ("Stamina", "stamina")),
+        (("Handstream", "handstream"), ("JackSpeed", "jackspeed")),
+        (("Chordjack", "chordjack"), ("Technical", "technical")),
     ];
 
-    Grid::new("ssr_grid")
-        .num_columns(2)
-        .spacing([40.0, 6.0])
-        .show(ui, |ui| {
-            for (label, value) in metrics {
-                ui.label(RichText::new(label).strong());
-                ui.label(format!("{:.2}", value));
-                ui.end_row();
-            }
+    for (left, right) in pairs {
+        ui.horizontal(|ui| {
+            render_metric_entry(ui, left.0, get_metric_value(rating, left.1));
+            ui.add_space(18.0);
+            render_metric_entry(ui, right.0, get_metric_value(rating, right.1));
         });
+    }
+}
+
+fn render_metric_entry(ui: &mut Ui, label: &str, value: f64) {
+    let alias = metric_alias(label);
+    ui.label(
+        RichText::new(format!("{}: {:.2}", alias, value))
+            .strong()
+            .monospace(),
+    );
+}
+
+fn get_metric_value(rating: &BeatmapRating, key: &str) -> f64 {
+    match key {
+        "overall" => rating.overall,
+        "stream" => rating.stream,
+        "jumpstream" => rating.jumpstream,
+        "handstream" => rating.handstream,
+        "stamina" => rating.stamina,
+        "jackspeed" => rating.jackspeed,
+        "chordjack" => rating.chordjack,
+        "technical" => rating.technical,
+        _ => 0.0,
+    }
+}
+
+fn metric_alias(label: &str) -> Cow<'_, str> {
+    match label.to_ascii_lowercase().as_str() {
+        "jumpstream" => Cow::Borrowed("JS"),
+        "stamina" => Cow::Borrowed("Stam"),
+        "handstream" => Cow::Borrowed("HS"),
+        "jackspeed" => Cow::Borrowed("SJ"),
+        "chordjack" => Cow::Borrowed("CJ"),
+        "technical" => Cow::Borrowed("Tech"),
+        _ => Cow::Borrowed(label),
+    }
 }
