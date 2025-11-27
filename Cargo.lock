@@ -259,6 +259,8 @@ dependencies = [
  "cexpr",
  "clang-sys",
  "itertools",
+ "log",
+ "prettyplease",
  "proc-macro2",
  "quote",
  "regex",
@@ -1972,6 +1974,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "minacalc-rs"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "829ac6e86040b32d0ec072cff288096e93907a64e1aca3e0cb11129e9348ea3e"
+dependencies = [
+ "bindgen",
+ "cc",
+ "rosu-map",
+]
+
+[[package]]
 name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2771,6 +2784,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8cf8e6a8aa66ce33f63993ffc4ea4271eb5b0530a9002db8455ea6050c77bfa"
 
 [[package]]
+name = "prettyplease"
+version = "0.2.37"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "479ca8adacdd7ce8f1fb39ce9ecccbfe93a3f1344b3d0d97f20bc0196208f62b"
+dependencies = [
+ "proc-macro2",
+ "syn",
+]
+
+[[package]]
 name = "proc-macro-crate"
 version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3007,6 +3030,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6b92ea634d8b3eaa4d7fba7bd12045dda1a50ce81401c96af0d9c851b0737544"
 
 [[package]]
+name = "rosu-mods"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cdc002dd5c7baef181e98980615ef27df55f35ff291c088cb37e6a339f2777e1"
+
+[[package]]
+name = "rosu-pp"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "46d32ddc712a7aa3f5541549cdb8a3ca050a902b654e3e15af7d29849689d14e"
+dependencies = [
+ "rosu-map",
+ "rosu-mods",
+]
+
+[[package]]
 name = "rsa"
 version = "0.9.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3084,13 +3123,16 @@ dependencies = [
  "image 0.24.9",
  "log",
  "md5",
+ "minacalc-rs",
  "pollster",
  "rand 0.9.2",
  "rodio",
  "rosu-map",
+ "rosu-pp",
  "serde",
  "serde_json",
  "sqlx",
+ "ssrrr",
  "tokio",
  "toml",
  "wgpu",
@@ -3581,6 +3623,15 @@ dependencies = [
  "thiserror 2.0.17",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "ssrrr"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b52e53f5467208450f5d05228dfb38448b07191e81254cad3b61cf02133fd660"
+dependencies = [
+ "rosu-map",
 ]
 
 [[package]]

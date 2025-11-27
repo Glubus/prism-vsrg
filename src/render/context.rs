@@ -14,26 +14,32 @@ impl RenderContext {
     pub async fn new(window: Arc<Window>) -> Self {
         let size = window.inner_size();
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        
+
         let surface = instance.create_surface(window.clone()).unwrap();
 
-        let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: Some(&surface),
-            force_fallback_adapter: false,
-        }).await.expect("Failed to find an appropriate adapter");
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+            })
+            .await
+            .expect("Failed to find an appropriate adapter");
 
-        let (device, queue) = adapter.request_device(
-            &wgpu::DeviceDescriptor {
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
                 label: Some("WGPU Device"),
                 required_features: wgpu::Features::empty(),
                 required_limits: wgpu::Limits::default(),
                 ..Default::default()
-            },
-        ).await.expect("Failed to create device");
+            })
+            .await
+            .expect("Failed to create device");
 
         let surface_caps = surface.get_capabilities(&adapter);
-        let texture_format = surface_caps.formats.iter()
+        let texture_format = surface_caps
+            .formats
+            .iter()
             .copied()
             .find(|f| f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
@@ -42,10 +48,18 @@ impl RenderContext {
         // 1. Immediate : Pas de VSync, FPS max, risque de tearing (déchirement). C'est ce qu'on veut pour la perf pure.
         // 2. Mailbox : Pas de VSync, FPS max, pas de tearing (Triple Buffering). Excellent si dispo.
         // 3. Fifo : VSync activée (Cap à 60/144Hz). Fallback obligatoire.
-        let present_mode = surface_caps.present_modes.iter()
+        let present_mode = surface_caps
+            .present_modes
+            .iter()
             .copied()
             .find(|&mode| mode == wgpu::PresentMode::Immediate) // Priorité absolu au mode "No VSync"
-            .or_else(|| surface_caps.present_modes.iter().copied().find(|&mode| mode == wgpu::PresentMode::Mailbox))
+            .or_else(|| {
+                surface_caps
+                    .present_modes
+                    .iter()
+                    .copied()
+                    .find(|&mode| mode == wgpu::PresentMode::Mailbox)
+            })
             .unwrap_or(wgpu::PresentMode::Fifo);
 
         log::info!("RENDER: Selected Present Mode: {:?}", present_mode);

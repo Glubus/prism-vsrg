@@ -1,8 +1,8 @@
-use egui::{Align, Color32, ScrollArea, TextureId, scroll_area::ScrollBarVisibility};
+use crate::core::input::actions::UIAction;
 use crate::models::menu::MenuState;
 use crate::views::components::menu::song_select::difficulty_card::DifficultyCard;
 use crate::views::components::menu::song_select::song_card::SongCard;
-use crate::core::input::actions::UIAction;
+use egui::{Align, Color32, ScrollArea, TextureId, scroll_area::ScrollBarVisibility};
 
 // Hauteur Carte (80) + Marge (8)
 const ROW_HEIGHT: f32 = 88.0;
@@ -79,8 +79,12 @@ impl SongList {
 
                 if let Some(need_scroll_to) = self.need_scroll_to.take() {
                     if need_scroll_to < beatmapsets.len() {
-                        let current_y = cumulative_heights.get(self.current).copied().unwrap_or(0.0);
-                        let target_y = cumulative_heights.get(need_scroll_to).copied().unwrap_or(0.0);
+                        let current_y =
+                            cumulative_heights.get(self.current).copied().unwrap_or(0.0);
+                        let target_y = cumulative_heights
+                            .get(need_scroll_to)
+                            .copied()
+                            .unwrap_or(0.0);
                         let scroll_y = target_y - current_y;
                         self.current = need_scroll_to;
                         ui.scroll_with_delta(egui::Vec2::new(0.0, -1.0 * scroll_y));
@@ -88,8 +92,14 @@ impl SongList {
                     }
                 }
 
-                let min_row = cumulative_heights.iter().position(|&h| h >= rect.min.y).unwrap_or(0);
-                let max_row = cumulative_heights.iter().position(|&h| h > rect.max.y).unwrap_or(beatmapsets.len());
+                let min_row = cumulative_heights
+                    .iter()
+                    .position(|&h| h >= rect.min.y)
+                    .unwrap_or(0);
+                let max_row = cumulative_heights
+                    .iter()
+                    .position(|&h| h > rect.max.y)
+                    .unwrap_or(beatmapsets.len());
 
                 let fill_top = cumulative_heights.get(min_row).copied().unwrap_or(0.0);
                 egui::Frame::NONE.show(ui, |ui| {
@@ -127,10 +137,10 @@ impl SongList {
                             // On émet l'action au lieu de changer l'état
                             action_triggered = Some(UIAction::SetSelection(id));
                             response.scroll_to_me(Some(Align::Center));
-                            
+
                             // IMPORTANT : On rend le focus pour que les touches (E, Espace) remarchent tout de suite
                             ui.ctx().memory_mut(|m| m.surrender_focus(response.id));
-                            
+
                             if sense.double_clicked() {
                                 // On pourrait envoyer UIAction::Select ici aussi pour lancer direct
                             }
@@ -162,7 +172,7 @@ impl SongList {
                 self.min = min_row;
                 self.max = max_row;
             });
-            
+
         action_triggered
     }
 }

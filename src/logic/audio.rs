@@ -1,15 +1,18 @@
-use rodio::{OutputStream, OutputStreamHandle, Sink, Decoder, Source};
+use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
-use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 use std::time::Duration;
 
 pub struct AudioManager {
     _stream: OutputStream,
     stream_handle: OutputStreamHandle,
     music_sink: Sink,
-    
+
     pub played_samples: Arc<AtomicUsize>,
     pub sample_rate: u32,
     pub channels: u16, // AJOUTÉ : Nécessaire pour le calcul du temps
@@ -19,7 +22,7 @@ impl AudioManager {
     pub fn new() -> Self {
         let (_stream, stream_handle) = OutputStream::try_default().expect("No audio device found");
         let music_sink = Sink::try_new(&stream_handle).expect("Failed to create sink");
-        
+
         Self {
             _stream,
             stream_handle,
@@ -35,14 +38,14 @@ impl AudioManager {
             if let Ok(source) = Decoder::new(BufReader::new(file)) {
                 self.sample_rate = source.sample_rate();
                 self.channels = source.channels(); // On récupère le vrai nombre de canaux
-                
+
                 self.played_samples.store(0, Ordering::Relaxed);
-                
+
                 let monitor = AudioMonitor {
                     inner: source,
                     played_samples: self.played_samples.clone(),
                 };
-                
+
                 if !self.music_sink.empty() {
                     self.music_sink.stop();
                 }
@@ -77,7 +80,7 @@ impl AudioManager {
     pub fn get_position_seconds(&self) -> f64 {
         let samples = self.played_samples.load(Ordering::Relaxed) as f64;
         let channels = self.channels.max(1) as f64; // Sécurité division par 0
-        
+
         // CORRECTION : On divise par le nombre de canaux !
         // Ex: 88200 samples / (44100 Hz * 2 canaux) = 1 seconde.
         samples / (self.sample_rate as f64 * channels)
@@ -108,8 +111,16 @@ where
     I: Source,
     I::Item: rodio::Sample,
 {
-    fn current_frame_len(&self) -> Option<usize> { self.inner.current_frame_len() }
-    fn channels(&self) -> u16 { self.inner.channels() }
-    fn sample_rate(&self) -> u32 { self.inner.sample_rate() }
-    fn total_duration(&self) -> Option<Duration> { self.inner.total_duration() }
+    fn current_frame_len(&self) -> Option<usize> {
+        self.inner.current_frame_len()
+    }
+    fn channels(&self) -> u16 {
+        self.inner.channels()
+    }
+    fn sample_rate(&self) -> u32 {
+        self.inner.sample_rate()
+    }
+    fn total_duration(&self) -> Option<Duration> {
+        self.inner.total_duration()
+    }
 }

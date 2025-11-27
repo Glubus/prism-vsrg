@@ -1,16 +1,15 @@
 use egui::{
-    Color32, Label, Margin, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, TextureId, UiBuilder,
-    Vec2,
+    Color32, Label, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, TextureId, UiBuilder, Vec2,
 };
 
-use crate::database::models::Beatmap;
+use crate::database::models::BeatmapWithRatings;
 
 pub struct DifficultyCard;
 
 impl DifficultyCard {
     pub fn render(
         ui: &mut egui::Ui,
-        beatmap: &Beatmap,
+        beatmap: &BeatmapWithRatings,
         is_selected: bool,
         texture_normal: Option<TextureId>,
         texture_selected: Option<TextureId>,
@@ -91,7 +90,7 @@ impl DifficultyCard {
 
         content_ui.vertical(|ui| {
             ui.centered_and_justified(|ui| {
-                if let Some(diff_name) = &beatmap.difficulty_name {
+                if let Some(diff_name) = &beatmap.beatmap.difficulty_name {
                     ui.add(
                         Label::new(RichText::new(diff_name).size(16.0).color(Color32::WHITE))
                             .selectable(false),

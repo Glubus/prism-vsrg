@@ -12,11 +12,11 @@ use md5::Digest;
 use wgpu::TextureView;
 use winit::dpi::PhysicalSize;
 
-use crate::models::menu::{MenuState, GameResultData}; // Ajout de GameResultData
+use crate::core::input::actions::UIAction;
+use crate::models::menu::{GameResultData, MenuState}; // Ajout de GameResultData
 use crate::views::components::menu::song_select::beatmap_info::BeatmapInfo;
 use crate::views::components::menu::song_select::leaderboard::{Leaderboard, ScoreCard};
 use crate::views::components::menu::song_select::song_list::SongList;
-use crate::core::input::actions::UIAction;
 
 pub struct CurrentBackground {
     pub image: DynamicImage,
@@ -107,7 +107,7 @@ impl SongSelectScreen {
         diff_sel_color: Color32,
     ) -> (Option<UIAction>, Option<GameResultData>) {
         self.song_list.set_current(menu_state.selected_index);
-        
+
         let mut action_triggered = None;
         let mut result_data_triggered = None;
 
@@ -125,22 +125,29 @@ impl SongSelectScreen {
                                     menu_state.beatmapsets.get(menu_state.selected_index)
                                 {
                                     let bm = beatmaps.get(menu_state.selected_difficulty_index);
-                                    let diff_name = bm.and_then(|bm| bm.difficulty_name.clone());
-                                    (Some(bs.clone()), bm.cloned(), menu_state.rate, diff_name)
+                                    let diff_name =
+                                        bm.and_then(|bm| bm.beatmap.difficulty_name.clone());
+                                    (
+                                        Some(bs.clone()),
+                                        bm.cloned(),
+                                        menu_state.rate,
+                                        diff_name,
+                                    )
                                 } else {
                                     (None, None, 1.0, None)
                                 }
                             };
 
                             if let Some(bs) = &beatmapset {
-                                self.beatmap_info.render(
-                                    ui,
-                                    bs,
-                                    beatmap.as_ref(),
-                                    rate,
-                                    hit_window_mode,
-                                    hit_window_value,
-                                );
+                                self.beatmap_info
+                                    .render(
+                                        ui,
+                                        bs,
+                                        beatmap.as_ref(),
+                                        rate,
+                                        hit_window_mode,
+                                        hit_window_value,
+                                    );
                                 ui.add_space(10.0);
                             }
 
@@ -195,7 +202,7 @@ impl SongSelectScreen {
                         });
                     })
             });
-            
+
         (action_triggered, result_data_triggered)
     }
 

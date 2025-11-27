@@ -1,2 +1,2 @@
-pub mod snapshot;
 pub mod messages;
+pub mod snapshot;

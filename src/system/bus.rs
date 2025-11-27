@@ -1,5 +1,5 @@
-use crossbeam_channel::{Sender, Receiver, unbounded, bounded};
-use crate::input::events::{RawInputEvent, GameAction};
+use crate::input::events::{GameAction, InputCommand, RawInputEvent};
+use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
 // Correction : Import depuis shared::snapshot
 use crate::shared::snapshot::RenderState;
 
@@ -18,6 +18,10 @@ pub struct SystemBus {
     pub raw_input_tx: Sender<RawInputEvent>,
     pub raw_input_rx: Receiver<RawInputEvent>,
 
+    // Commands vers le thread Input
+    pub input_cmd_tx: Sender<InputCommand>,
+    pub input_cmd_rx: Receiver<InputCommand>,
+
     // Input -> Logic (Actions de jeu)
     pub action_tx: Sender<GameAction>,
     pub action_rx: Receiver<GameAction>,
@@ -34,21 +38,24 @@ pub struct SystemBus {
 impl SystemBus {
     pub fn new() -> Self {
         let (raw_input_tx, raw_input_rx) = unbounded();
+        let (input_cmd_tx, input_cmd_rx) = unbounded();
         let (action_tx, action_rx) = unbounded();
-        
+
         // Canal borné pour le rendu (2 frames max en attente pour éviter la latence)
         let (render_tx, render_rx) = bounded(2);
-        
+
         let (sys_tx, sys_rx) = unbounded();
 
         Self {
-            raw_input_tx, 
+            raw_input_tx,
             raw_input_rx,
-            action_tx, 
+            input_cmd_tx,
+            input_cmd_rx,
+            action_tx,
             action_rx,
-            render_tx, 
+            render_tx,
             render_rx, // Initialisation ajoutée ici
-            sys_tx, 
+            sys_tx,
             sys_rx,
         }
     }

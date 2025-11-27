@@ -3,7 +3,7 @@ use egui::{
     Vec2,
 };
 
-use crate::database::models::{Beatmap, Beatmapset};
+use crate::database::models::{BeatmapWithRatings, Beatmapset};
 
 pub struct SongCard;
 
@@ -11,7 +11,7 @@ impl SongCard {
     pub fn render(
         ui: &mut egui::Ui,
         beatmapset: &Beatmapset,
-        _beatmaps: &[Beatmap],
+        _beatmaps: &[BeatmapWithRatings],
         is_selected: bool,
         texture_normal: Option<TextureId>,
         texture_selected: Option<TextureId>,

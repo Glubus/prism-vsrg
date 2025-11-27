@@ -64,7 +64,10 @@ impl GameState for ResultStateController {
                     format!("OD {:.1}", renderer.resources.settings.hit_window_value)
                 }
                 crate::models::settings::HitWindowMode::EtternaJudge => {
-                    format!("Judge {}", renderer.resources.settings.hit_window_value as u8)
+                    format!(
+                        "Judge {}",
+                        renderer.resources.settings.hit_window_value as u8
+                    )
                 }
             };
 

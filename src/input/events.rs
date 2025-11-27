@@ -1,5 +1,6 @@
+use std::collections::HashMap;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
-use winit::keyboard::{PhysicalKey, KeyCode};
+use winit::keyboard::{KeyCode, PhysicalKey};
 
 #[derive(Debug, Clone, Copy)]
 pub struct RawInputEvent {
@@ -10,14 +11,16 @@ pub struct RawInputEvent {
 impl RawInputEvent {
     pub fn from_winit(event: &WindowEvent) -> Option<Self> {
         if let WindowEvent::KeyboardInput {
-            event: KeyEvent {
-                physical_key: PhysicalKey::Code(keycode),
-                state,
-                repeat: false, 
-                ..
-            },
+            event:
+                KeyEvent {
+                    physical_key: PhysicalKey::Code(keycode),
+                    state,
+                    repeat: false,
+                    ..
+                },
             ..
-        } = event {
+        } = event
+        {
             Some(Self {
                 keycode: *keycode,
                 state: *state,
@@ -30,7 +33,15 @@ impl RawInputEvent {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditorTarget {
-    Notes, Receptors, Combo, Score, Accuracy, Judgement, Counter, HitBar, Lanes
+    Notes,
+    Receptors,
+    Combo,
+    Score,
+    Accuracy,
+    Judgement,
+    Counter,
+    HitBar,
+    Lanes,
 }
 
 // NOUVEAU : Le mode d'édition
@@ -55,28 +66,35 @@ pub enum GameAction {
     Hit { column: usize },
     Release { column: usize },
     Restart,
-    
+
     // Système / UI
     TogglePause,
     Back,
     Confirm,
     Navigation { x: i32, y: i32 },
-    
+
     // Souris
     SetSelection(usize),
     SetDifficulty(usize),
-    
+
     // Onglets / Settings
     TabNext,
     TabPrev,
     ToggleSettings,
-    
+    UpdateVolume(f32),
+    ReloadKeybinds,
+
     // Editor
     ToggleEditor,
     EditorSelect(EditorTarget),
     EditorModify { x: f32, y: f32 },
     EditorSave,
-    
+
     // DB
-    Rescan, 
+    Rescan,
+}
+
+#[derive(Debug, Clone)]
+pub enum InputCommand {
+    ReloadKeybinds(HashMap<String, Vec<String>>),
 }

@@ -1,4 +1,4 @@
-use crate::database::{Beatmap, Beatmapset, Database};
+use crate::database::{BeatmapWithRatings, Beatmapset, Database};
 use crate::models::replay::ReplayData;
 use crate::models::stats::HitStats;
 use std::path::PathBuf;
@@ -18,7 +18,7 @@ pub struct GameResultData {
 
 #[derive(Clone, Debug)]
 pub struct MenuState {
-    pub beatmapsets: Vec<(Beatmapset, Vec<Beatmap>)>,
+    pub beatmapsets: Vec<(Beatmapset, Vec<BeatmapWithRatings>)>,
     pub start_index: usize,
     pub end_index: usize,
     pub selected_index: usize,
@@ -28,7 +28,7 @@ pub struct MenuState {
     pub in_editor: bool,
     pub show_result: bool,
     // NOUVEAU : Source de vérité pour l'affichage des settings
-    pub show_settings: bool, 
+    pub show_settings: bool,
     pub rate: f64,
     pub last_result: Option<GameResultData>,
     pub should_close_result: bool,
@@ -76,7 +76,7 @@ impl MenuState {
         Ok(())
     }
 
-    pub fn get_visible_items(&self) -> &[(Beatmapset, Vec<Beatmap>)] {
+    pub fn get_visible_items(&self) -> &[(Beatmapset, Vec<BeatmapWithRatings>)] {
         if self.start_index >= self.beatmapsets.len() {
             return &[];
         }
@@ -129,7 +129,7 @@ impl MenuState {
         }
     }
 
-    pub fn get_selected_beatmapset(&self) -> Option<&(Beatmapset, Vec<Beatmap>)> {
+    pub fn get_selected_beatmapset(&self) -> Option<&(Beatmapset, Vec<BeatmapWithRatings>)> {
         self.beatmapsets.get(self.selected_index)
     }
 
@@ -140,7 +140,7 @@ impl MenuState {
                     self.selected_difficulty_index
                         .min(beatmaps.len().saturating_sub(1)),
                 )
-                .map(|bm| PathBuf::from(&bm.path))
+                .map(|bm| PathBuf::from(&bm.beatmap.path))
         })
     }
 
@@ -174,7 +174,7 @@ impl MenuState {
                     self.selected_difficulty_index
                         .min(beatmaps.len().saturating_sub(1)),
                 )
-                .and_then(|bm| bm.difficulty_name.clone())
+                .and_then(|bm| bm.beatmap.difficulty_name.clone())
         })
     }
 
@@ -185,7 +185,7 @@ impl MenuState {
                     self.selected_difficulty_index
                         .min(beatmaps.len().saturating_sub(1)),
                 )
-                .map(|bm| bm.hash.clone())
+                .map(|bm| bm.beatmap.hash.clone())
         })
     }
 }

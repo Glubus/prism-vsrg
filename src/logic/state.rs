@@ -1,9 +1,10 @@
-use crate::input::events::{GameAction, EditorTarget, EditMode};
-use crate::shared::snapshot::{RenderState, GameplaySnapshot, EditorSnapshot}; 
-use crate::models::menu::{MenuState, GameResultData};
-use crate::models::settings::{SettingsState, HitWindowMode};
-use crate::logic::engine::GameEngine;
 use crate::database::{DbManager, DbStatus};
+use crate::input::events::{EditMode, EditorTarget, GameAction, InputCommand};
+use crate::logic::engine::GameEngine;
+use crate::models::menu::{GameResultData, MenuState};
+use crate::models::settings::{HitWindowMode, SettingsState};
+use crate::shared::snapshot::{EditorSnapshot, RenderState};
+use crossbeam_channel::Sender;
 
 enum AppState {
     Menu(MenuState),
@@ -23,19 +24,21 @@ pub struct GlobalState {
     db_manager: DbManager,
     last_db_beatmap_count: usize,
     settings: SettingsState,
+    input_cmd_tx: Sender<InputCommand>,
 }
 
 impl GlobalState {
-    pub fn new(db_manager: DbManager) -> Self {
+    pub fn new(db_manager: DbManager, input_cmd_tx: Sender<InputCommand>) -> Self {
         log::info!("LOGIC: Initializing Global State");
         let settings = SettingsState::load();
         let menu = MenuState::new();
-        
+
         Self {
             current_state: AppState::Menu(menu),
             db_manager,
             last_db_beatmap_count: 0,
             settings,
+            input_cmd_tx,
         }
     }
 
@@ -48,7 +51,7 @@ impl GlobalState {
         let mut next_state = None;
 
         match &mut self.current_state {
-            AppState::Menu(_) => {},
+            AppState::Menu(_) => {}
             AppState::Game(engine) => {
                 engine.update(dt);
                 if engine.is_finished() {
@@ -58,16 +61,21 @@ impl GlobalState {
                         score: engine.score,
                         accuracy: engine.hit_stats.calculate_accuracy(),
                         max_combo: engine.max_combo,
-                        beatmap_hash: None, 
+                        beatmap_hash: None,
                         rate: engine.rate,
                         judge_text: self.get_hit_window_text(),
                     };
                     next_state = Some(AppState::Result(result));
                 }
-            },
-            AppState::Editor { engine, modification_buffer: _, save_requested, .. } => {
+            }
+            AppState::Editor {
+                engine: _,
+                modification_buffer: _,
+                save_requested,
+                ..
+            } => {
                 *save_requested = false;
-            },
+            }
             AppState::Result(_) => {}
         }
 
@@ -105,45 +113,68 @@ impl GlobalState {
     }
 
     pub fn handle_action(&mut self, action: GameAction) {
+        if let GameAction::ReloadKeybinds = action {
+            self.reload_keybinds_from_disk();
+            return;
+        }
+
         let mut next_state = None;
 
         match &mut self.current_state {
             AppState::Menu(menu) => {
                 match action {
                     GameAction::Navigation { x, y } => {
-                        if y < 0 { menu.move_up(); }
-                        if y > 0 { menu.move_down(); }
-                        if x < 0 { menu.previous_difficulty(); }
-                        if x > 0 { menu.next_difficulty(); }
-                    },
+                        if y < 0 {
+                            menu.move_up();
+                        }
+                        if y > 0 {
+                            menu.move_down();
+                        }
+                        if x < 0 {
+                            menu.previous_difficulty();
+                        }
+                        if x > 0 {
+                            menu.next_difficulty();
+                        }
+                    }
                     GameAction::SetSelection(idx) => {
                         if idx < menu.beatmapsets.len() {
                             menu.selected_index = idx;
                             menu.selected_difficulty_index = 0;
                             if idx < menu.start_index {
                                 menu.start_index = idx;
-                                menu.end_index = (menu.start_index + menu.visible_count).min(menu.beatmapsets.len());
+                                menu.end_index = (menu.start_index + menu.visible_count)
+                                    .min(menu.beatmapsets.len());
                             } else if idx >= menu.end_index {
                                 menu.end_index = (idx + 1).min(menu.beatmapsets.len());
-                                menu.start_index = menu.end_index.saturating_sub(menu.visible_count);
+                                menu.start_index =
+                                    menu.end_index.saturating_sub(menu.visible_count);
                             }
                         }
-                    },
+                    }
                     GameAction::SetDifficulty(idx) => menu.selected_difficulty_index = idx,
                     GameAction::Confirm => {
-                         if let Some(path) = menu.get_selected_beatmap_path() {
+                        if let Some(path) = menu.get_selected_beatmap_path() {
                             let mut engine = GameEngine::new(path, menu.rate);
                             engine.scroll_speed_ms = self.settings.scroll_speed;
-                            engine.update_hit_window(self.settings.hit_window_mode, self.settings.hit_window_value);
+                            engine.update_hit_window(
+                                self.settings.hit_window_mode,
+                                self.settings.hit_window_value,
+                            );
+                            engine.audio_manager.set_volume(self.settings.master_volume);
                             next_state = Some(AppState::Game(engine));
                         }
-                    },
+                    }
                     GameAction::ToggleEditor => {
                         if let Some(path) = menu.get_selected_beatmap_path() {
                             let mut engine = GameEngine::new(path, 1.0);
                             engine.scroll_speed_ms = self.settings.scroll_speed;
-                            engine.update_hit_window(self.settings.hit_window_mode, self.settings.hit_window_value);
-                            
+                            engine.update_hit_window(
+                                self.settings.hit_window_mode,
+                                self.settings.hit_window_value,
+                            );
+                            engine.audio_manager.set_volume(self.settings.master_volume);
+
                             next_state = Some(AppState::Editor {
                                 engine,
                                 target: None,
@@ -152,35 +183,49 @@ impl GlobalState {
                                 save_requested: false,
                             });
                         }
-                    },
+                    }
                     GameAction::TabNext => menu.increase_rate(),
                     GameAction::TabPrev => menu.decrease_rate(),
                     GameAction::ToggleSettings => menu.show_settings = !menu.show_settings,
+                    GameAction::UpdateVolume(value) => {
+                        self.settings.master_volume = value;
+                    }
                     GameAction::Rescan => {
                         self.db_manager.rescan();
-                        self.last_db_beatmap_count = 0; 
-                    },
+                        self.last_db_beatmap_count = 0;
+                    }
                     _ => {}
                 }
-            },
-            AppState::Game(engine) => {
-                if action == GameAction::Back {
+            }
+            AppState::Game(engine) => match action {
+                GameAction::Back => {
                     engine.audio_manager.stop();
-                    let mut new_menu = MenuState::new();
-                    self.last_db_beatmap_count = 0; 
+                    let new_menu = MenuState::new();
+                    self.last_db_beatmap_count = 0;
                     next_state = Some(AppState::Menu(new_menu));
-                } else {
+                }
+                GameAction::UpdateVolume(value) => {
+                    self.settings.master_volume = value;
+                    engine.audio_manager.set_volume(value);
+                }
+                _ => {
                     engine.handle_input(action);
                 }
             },
-            AppState::Editor { engine, target, mode, modification_buffer, save_requested } => {
+            AppState::Editor {
+                engine,
+                target,
+                mode,
+                modification_buffer,
+                save_requested,
+            } => {
                 match action {
                     GameAction::Back => {
                         engine.audio_manager.stop();
-                        let mut new_menu = MenuState::new();
+                        let new_menu = MenuState::new();
                         self.last_db_beatmap_count = 0;
                         next_state = Some(AppState::Menu(new_menu));
-                    },
+                    }
                     GameAction::EditorSelect(t) => {
                         if *target == Some(t) {
                             // Si même cible, on bascule le mode
@@ -192,32 +237,38 @@ impl GlobalState {
                             // Nouvelle cible, mode par défaut intelligent
                             *target = Some(t);
                             *mode = match t {
-                                EditorTarget::Notes | EditorTarget::Receptors | EditorTarget::HitBar => EditMode::Resize,
+                                EditorTarget::Notes
+                                | EditorTarget::Receptors
+                                | EditorTarget::HitBar => EditMode::Resize,
                                 _ => EditMode::Move,
                             };
                         }
-                    },
+                    }
                     GameAction::Navigation { x, y } => {
                         if target.is_some() {
                             *modification_buffer = Some((x as f32, y as f32));
                         }
-                    },
+                    }
                     GameAction::EditorSave => *save_requested = true,
+                    GameAction::UpdateVolume(value) => {
+                        self.settings.master_volume = value;
+                        engine.audio_manager.set_volume(value);
+                    }
                     GameAction::Hit { column } => engine.handle_input(GameAction::Hit { column }),
-                    GameAction::Release { column } => engine.handle_input(GameAction::Release { column }),
-                    _ => {}
-                }
-            },
-            AppState::Result(_) => {
-                match action {
-                    GameAction::Back | GameAction::Confirm => {
-                        let mut new_menu = MenuState::new();
-                        self.last_db_beatmap_count = 0;
-                        next_state = Some(AppState::Menu(new_menu));
+                    GameAction::Release { column } => {
+                        engine.handle_input(GameAction::Release { column })
                     }
                     _ => {}
                 }
             }
+            AppState::Result(_) => match action {
+                GameAction::Back | GameAction::Confirm => {
+                    let new_menu = MenuState::new();
+                    self.last_db_beatmap_count = 0;
+                    next_state = Some(AppState::Menu(new_menu));
+                }
+                _ => {}
+            },
         }
 
         if let Some(state) = next_state {
@@ -226,7 +277,12 @@ impl GlobalState {
     }
 
     pub fn frame_end(&mut self) {
-        if let AppState::Editor { modification_buffer, save_requested, .. } = &mut self.current_state {
+        if let AppState::Editor {
+            modification_buffer,
+            save_requested,
+            ..
+        } = &mut self.current_state
+        {
             *modification_buffer = None;
             *save_requested = false;
         }
@@ -236,17 +292,25 @@ impl GlobalState {
         match &self.current_state {
             AppState::Menu(menu) => RenderState::Menu(menu.clone()),
             AppState::Game(engine) => RenderState::InGame(engine.get_snapshot()),
-            AppState::Editor { engine, target, mode, modification_buffer, save_requested } => {
-                let modification = if let (Some(t), Some((dx, dy))) = (target, modification_buffer) {
+            AppState::Editor {
+                engine,
+                target,
+                mode,
+                modification_buffer,
+                save_requested,
+            } => {
+                let modification = if let (Some(t), Some((dx, dy))) = (target, modification_buffer)
+                {
                     Some((*t, *mode, *dx, *dy))
                 } else {
                     None
                 };
-                
+
                 let status_text = if let Some(t) = target {
                     format!("EDIT: {:?} [{}]", t, mode)
                 } else {
-                    "SELECT: W(Note) X(Rec) C(Cmb) V(Scr) B(Acc) N(Judg) K(Bar) | S(Save)".to_string()
+                    "SELECT: W(Note) X(Rec) C(Cmb) V(Scr) B(Acc) N(Judg) K(Bar) | S(Save)"
+                        .to_string()
                 };
 
                 RenderState::Editor(EditorSnapshot {
@@ -257,8 +321,21 @@ impl GlobalState {
                     modification,
                     save_requested: *save_requested,
                 })
-            },
+            }
             AppState::Result(res) => RenderState::Result(res.clone()),
+        }
+    }
+}
+
+impl GlobalState {
+    fn reload_keybinds_from_disk(&mut self) {
+        let disk_settings = SettingsState::load();
+        self.settings.keybinds = disk_settings.keybinds.clone();
+        if let Err(e) = self
+            .input_cmd_tx
+            .send(InputCommand::ReloadKeybinds(self.settings.keybinds.clone()))
+        {
+            log::error!("LOGIC: Failed to forward keybinds to input thread: {}", e);
         }
     }
 }

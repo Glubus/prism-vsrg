@@ -47,7 +47,7 @@ impl GameState for MenuStateController {
             state.in_menu = true;
             state.in_editor = false;
         });
-        
+
         // Reset visuel local (optionnel, le snapshot écrasera ça vite)
         ctx.with_renderer(|renderer| {
             renderer.resources.leaderboard_scores_loaded = false;
@@ -63,7 +63,7 @@ impl GameState for MenuStateController {
     ) -> StateTransition {
         // La logique reçoit déjà les inputs via App.
         // Ici on gère UNIQUEMENT les transitions d'état locales (Main Thread).
-        
+
         if let Some(KeyAction::UI(action)) = action {
             match action {
                 UIAction::Select => {
@@ -77,7 +77,7 @@ impl GameState for MenuStateController {
                 _ => {}
             }
         }
-        
+
         // Le thread logique met à jour MenuState, le Renderer l'affiche.
         // On laisse le MenuStateController minimaliste.
         StateTransition::None

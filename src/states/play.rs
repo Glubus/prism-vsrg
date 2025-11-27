@@ -31,13 +31,13 @@ impl GameState for PlayStateController {
     ) -> StateTransition {
         // Les inputs de jeu (Hit, etc.) sont envoyés directement au Logic Thread par App.
         // On ne gère ici que la sortie forcée (Echap).
-        
+
         if let Some(KeyAction::UI(UIAction::Back)) = action {
             // Demander au moteur de s'arrêter
             ctx.send_to_logic(MainToLogic::Input(KeyAction::UI(UIAction::Back)));
-            
+
             // Revenir au menu (le state visuel suivra via le snapshot)
-            // Note : App gère la transition si Logic renvoie TransitionToMenu, 
+            // Note : App gère la transition si Logic renvoie TransitionToMenu,
             // mais on peut forcer ici pour réactivité immédiate de l'UI.
             // Pour l'instant, on laisse Logic gérer le shutdown audio.
         }

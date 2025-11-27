@@ -1,7 +1,13 @@
-use crate::database::models::{Beatmap, Beatmapset};
+use crate::database::models::{BeatmapRating, BeatmapWithRatings, Beatmapset};
 use crate::database::query;
 use sqlx::{SqlitePool, sqlite::SqliteConnectOptions};
 use std::path::{Path, PathBuf};
+
+const MIGRATION_CREATE_BEATMAPSET: &str = include_str!("migrations/001_create_beatmapset.sql");
+const MIGRATION_CREATE_BEATMAP: &str = include_str!("migrations/002_create_beatmap.sql");
+const MIGRATION_CREATE_REPLAY: &str = include_str!("migrations/003_create_replay.sql");
+const MIGRATION_CREATE_BEATMAP_RATING: &str =
+    include_str!("migrations/005_create_beatmap_rating.sql");
 
 pub struct Database {
     pool: SqlitePool,
@@ -46,54 +52,14 @@ impl Database {
 
     /// Initialise les tables si elles n'existent pas
     async fn init_schema(&self) -> Result<(), sqlx::Error> {
-        // Table beatmapset (on garde l'id pour la compatibilité avec les relations)
-        sqlx::query(
-            "CREATE TABLE IF NOT EXISTS beatmapset (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                path TEXT NOT NULL UNIQUE,
-                image_path TEXT,
-                artist TEXT,
-                title TEXT
-            )",
-        )
-        .execute(&self.pool)
-        .await?;
-
-        // Table beatmap - hash MD5 comme clé primaire
-        sqlx::query(
-            "CREATE TABLE IF NOT EXISTS beatmap (
-                hash TEXT PRIMARY KEY,
-                beatmapset_id INTEGER NOT NULL,
-                path TEXT NOT NULL UNIQUE,
-                difficulty_name TEXT,
-                note_count INTEGER NOT NULL,
-                FOREIGN KEY (beatmapset_id) REFERENCES beatmapset(id) ON DELETE CASCADE
-            )",
-        )
-        .execute(&self.pool)
-        .await?;
-
-        // Table replay
-        sqlx::query(
-            "CREATE TABLE IF NOT EXISTS replay (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                beatmap_hash TEXT NOT NULL,
-                timestamp INTEGER NOT NULL,
-                score INTEGER NOT NULL,
-                accuracy REAL NOT NULL,
-                max_combo INTEGER NOT NULL,
-                rate REAL NOT NULL DEFAULT 1.0,
-                data TEXT NOT NULL,
-                FOREIGN KEY (beatmap_hash) REFERENCES beatmap(hash) ON DELETE CASCADE
-            )",
-        )
-        .execute(&self.pool)
-        .await?;
-
-        // Migration: Ajouter la colonne rate si elle n'existe pas (pour les bases de données existantes)
-        let _ = sqlx::query("ALTER TABLE replay ADD COLUMN rate REAL NOT NULL DEFAULT 1.0")
-            .execute(&self.pool)
-            .await; // On ignore l'erreur si la colonne existe déjà
+        for migration in [
+            MIGRATION_CREATE_BEATMAPSET,
+            MIGRATION_CREATE_BEATMAP,
+            MIGRATION_CREATE_REPLAY,
+            MIGRATION_CREATE_BEATMAP_RATING,
+        ] {
+            sqlx::query(migration).execute(&self.pool).await?;
+        }
 
         Ok(())
     }
@@ -127,6 +93,8 @@ impl Database {
         path: &str,
         difficulty_name: Option<&str>,
         note_count: i32,
+        duration_ms: i32,
+        nps: f64,
     ) -> Result<String, sqlx::Error> {
         query::insert_beatmap(
             &self.pool,
@@ -135,14 +103,59 @@ impl Database {
             path,
             difficulty_name,
             note_count,
+            duration_ms,
+            nps,
         )
         .await
+    }
+
+    /// Insère ou met à jour un rating pour une beatmap
+    pub async fn upsert_beatmap_rating(
+        &self,
+        beatmap_hash: &str,
+        name: &str,
+        overall: f64,
+        stream: f64,
+        jumpstream: f64,
+        handstream: f64,
+        stamina: f64,
+        jackspeed: f64,
+        chordjack: f64,
+        technical: f64,
+    ) -> Result<(), sqlx::Error> {
+        query::upsert_beatmap_rating(
+            &self.pool,
+            beatmap_hash,
+            name,
+            overall,
+            stream,
+            jumpstream,
+            handstream,
+            stamina,
+            jackspeed,
+            chordjack,
+            technical,
+        )
+        .await
+    }
+
+    /// Récupère les ratings d'une beatmap
+    pub async fn get_ratings_for_beatmap(
+        &self,
+        beatmap_hash: &str,
+    ) -> Result<Vec<BeatmapRating>, sqlx::Error> {
+        query::get_ratings_for_beatmap(&self.pool, beatmap_hash).await
+    }
+
+    /// Récupère tous les ratings
+    pub async fn get_all_beatmap_ratings(&self) -> Result<Vec<BeatmapRating>, sqlx::Error> {
+        query::get_all_beatmap_ratings(&self.pool).await
     }
 
     /// Récupère tous les beatmapsets avec leurs beatmaps
     pub async fn get_all_beatmapsets(
         &self,
-    ) -> Result<Vec<(Beatmapset, Vec<Beatmap>)>, sqlx::Error> {
+    ) -> Result<Vec<(Beatmapset, Vec<BeatmapWithRatings>)>, sqlx::Error> {
         query::get_all_beatmapsets(&self.pool).await
     }
 
@@ -161,7 +174,7 @@ impl Database {
         max_combo: i32,
         rate: f64,
         data: &str,
-    ) -> Result<i64, sqlx::Error> {
+    ) -> Result<String, sqlx::Error> {
         query::insert_replay(
             &self.pool,
             beatmap_hash,

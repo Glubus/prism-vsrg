@@ -1,5 +1,5 @@
 use crate::database::connection::Database;
-use crate::database::models::{Beatmap, Beatmapset};
+use crate::database::models::{BeatmapWithRatings, Beatmapset};
 use crate::database::query::{clear_all, get_all_beatmapsets};
 use crate::database::scanner::scan_songs_directory;
 use std::path::{Path, PathBuf};
@@ -19,7 +19,7 @@ pub enum DbStatus {
 #[derive(Debug, Clone)]
 pub struct DbState {
     pub status: DbStatus,
-    pub beatmapsets: Vec<(Beatmapset, Vec<Beatmap>)>,
+    pub beatmapsets: Vec<(Beatmapset, Vec<BeatmapWithRatings>)>,
     pub error: Option<String>,
 }
 

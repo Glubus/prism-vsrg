@@ -33,6 +33,8 @@ pub struct SettingsState {
     pub show_keybindings: bool,
     #[serde(skip)]
     pub remapping_column: Option<usize>,
+    #[serde(skip)]
+    pub remapping_buffer: Vec<String>,
 }
 
 impl SettingsState {
@@ -49,6 +51,7 @@ impl SettingsState {
             is_open: false,
             show_keybindings: false,
             remapping_column: None,
+            remapping_buffer: Vec::new(),
         }
     }
 
@@ -58,6 +61,7 @@ impl SettingsState {
                 settings.is_open = false;
                 settings.show_keybindings = false;
                 settings.remapping_column = None;
+                settings.remapping_buffer = Vec::new();
 
                 if settings.keybinds.is_empty() {
                     settings.keybinds = Self::default_keybinds();
@@ -78,6 +82,38 @@ impl SettingsState {
                 }
             }
             Err(e) => eprintln!("Failed to serialize settings: {}", e),
+        }
+    }
+
+    pub fn reset_keybinds(&mut self) {
+        self.keybinds = Self::default_keybinds();
+    }
+
+    pub fn begin_keybind_capture(&mut self, columns: usize) {
+        self.remapping_column = Some(columns);
+        self.remapping_buffer.clear();
+    }
+
+    pub fn cancel_keybind_capture(&mut self) {
+        self.remapping_column = None;
+        self.remapping_buffer.clear();
+    }
+
+    pub fn push_keybind_key(&mut self, key_label: String) {
+        let Some(target_columns) = self.remapping_column else {
+            return;
+        };
+
+        if !self.remapping_buffer.contains(&key_label) {
+            self.remapping_buffer.push(key_label);
+        }
+
+        if self.remapping_buffer.len() >= target_columns {
+            let column_key = target_columns.to_string();
+            self.keybinds
+                .insert(column_key, self.remapping_buffer.clone());
+            self.remapping_buffer.clear();
+            self.remapping_column = None;
         }
     }
 

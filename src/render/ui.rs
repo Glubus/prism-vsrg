@@ -1,9 +1,9 @@
-use std::sync::Arc;
-use winit::window::Window;
-use winit::event::WindowEvent;
 use egui_wgpu::{Renderer as EguiRenderer, RendererOptions};
 use egui_winit::State as EguiState;
+use std::sync::Arc;
 use wgpu::{Device, Queue, TextureFormat};
+use winit::event::WindowEvent;
+use winit::window::Window;
 
 use crate::render::context::RenderContext;
 
@@ -24,7 +24,7 @@ impl UiOverlay {
             None,
             None,
         );
-        
+
         // Correction : Utilisation de la struct RendererOptions
         // et du champ depth_stencil_format (au lieu de depth_format)
         let renderer = EguiRenderer::new(
@@ -34,10 +34,14 @@ impl UiOverlay {
                 depth_stencil_format: None,
                 // msaa_samples et dithering sont gérés par les valeurs par défaut ou implicitement
                 ..Default::default()
-            }
+            },
         );
 
-        Self { ctx, state, renderer }
+        Self {
+            ctx,
+            state,
+            renderer,
+        }
     }
 
     pub fn handle_input(&mut self, window: &Window, event: &WindowEvent) -> bool {
@@ -57,19 +61,17 @@ impl UiOverlay {
         view: &wgpu::TextureView,
     ) {
         let full_output = self.ctx.end_pass();
-        
-        self.state.handle_platform_output(
-            &ctx.window,
-            full_output.platform_output
-        );
 
-        let tris = self.ctx.tessellate(
-            full_output.shapes,
-            ctx.window.scale_factor() as f32
-        );
+        self.state
+            .handle_platform_output(&ctx.window, full_output.platform_output);
+
+        let tris = self
+            .ctx
+            .tessellate(full_output.shapes, ctx.window.scale_factor() as f32);
 
         for (id, image) in &full_output.textures_delta.set {
-            self.renderer.update_texture(&ctx.device, &ctx.queue, *id, image);
+            self.renderer
+                .update_texture(&ctx.device, &ctx.queue, *id, image);
         }
 
         let screen_descriptor = egui_wgpu::ScreenDescriptor {
@@ -77,13 +79,8 @@ impl UiOverlay {
             pixels_per_point: ctx.window.scale_factor() as f32,
         };
 
-        self.renderer.update_buffers(
-            &ctx.device,
-            &ctx.queue,
-            encoder,
-            &tris,
-            &screen_descriptor
-        );
+        self.renderer
+            .update_buffers(&ctx.device, &ctx.queue, encoder, &tris, &screen_descriptor);
 
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Egui Main Pass"),
@@ -91,7 +88,7 @@ impl UiOverlay {
                 view,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Load, 
+                    load: wgpu::LoadOp::Load,
                     store: wgpu::StoreOp::Store,
                 },
                 // Correction : Ajout du champ depth_slice manquant
@@ -104,11 +101,14 @@ impl UiOverlay {
 
         // Hack de lifetime nécessaire pour Egui + WGPU
         let rpass_static = unsafe {
-            std::mem::transmute::<&mut wgpu::RenderPass<'_>, &mut wgpu::RenderPass<'static>>(&mut render_pass)
+            std::mem::transmute::<&mut wgpu::RenderPass<'_>, &mut wgpu::RenderPass<'static>>(
+                &mut render_pass,
+            )
         };
 
-        self.renderer.render(rpass_static, &tris, &screen_descriptor);
-        
+        self.renderer
+            .render(rpass_static, &tris, &screen_descriptor);
+
         for id in &full_output.textures_delta.free {
             self.renderer.free_texture(id);
         }

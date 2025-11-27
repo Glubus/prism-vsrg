@@ -1,9 +1,11 @@
 pub mod events;
 pub mod manager;
 
-use std::thread;
-use crate::system::bus::SystemBus;
+use crate::input::events::InputCommand;
 use crate::input::manager::InputManager;
+use crate::system::bus::SystemBus;
+use crossbeam_channel::select;
+use std::thread;
 
 pub fn start_thread(bus: SystemBus, mut manager: InputManager) {
     thread::Builder::new()
@@ -13,14 +15,26 @@ pub fn start_thread(bus: SystemBus, mut manager: InputManager) {
 
             // Boucle bloquante : attend un event, le traite, recommence.
             // C'est ultra efficace et ne consomme pas de CPU à vide.
-            while let Ok(raw_event) = bus.raw_input_rx.recv() {
-                // Le Manager contient la map des touches (KeyBindings)
-                // Il retourne Some(Action) si la touche correspond à quelque chose.
-                if let Some(action) = manager.process(raw_event) {
-                    // On envoie direct à la Logique
-                    if let Err(e) = bus.action_tx.send(action) {
-                        log::error!("INPUT: Failed to send action (Logic thread died?): {}", e);
-                        break;
+            loop {
+                select! {
+                    recv(bus.raw_input_rx) -> raw => {
+                        match raw {
+                            Ok(raw_event) => {
+                                if let Some(action) = manager.process(raw_event) {
+                                    if let Err(e) = bus.action_tx.send(action) {
+                                        log::error!("INPUT: Failed to send action (Logic thread died?): {}", e);
+                                        break;
+                                    }
+                                }
+                            }
+                            Err(_) => break,
+                        }
+                    }
+                    recv(bus.input_cmd_rx) -> cmd => {
+                        match cmd {
+                            Ok(InputCommand::ReloadKeybinds(map)) => manager.reload_keybinds(&map),
+                            Err(_) => break,
+                        }
                     }
                 }
             }

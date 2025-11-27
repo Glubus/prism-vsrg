@@ -2,13 +2,13 @@ pub mod audio;
 pub mod engine;
 pub mod state;
 
+use crate::database::DbManager;
+use crate::logic::state::GlobalState;
+use crate::system::bus::{SystemBus, SystemEvent};
 use std::thread;
 use std::time::{Duration, Instant};
-use crate::system::bus::{SystemBus, SystemEvent};
-use crate::logic::state::GlobalState;
-use crate::database::DbManager;
 
-const TPS: u64 = 200; 
+const TPS: u64 = 200;
 
 pub fn start_thread(bus: SystemBus, db_manager: DbManager) {
     thread::Builder::new()
@@ -21,8 +21,9 @@ pub fn start_thread(bus: SystemBus, db_manager: DbManager) {
             // 2. Force Rescan au démarrage pour peupler la DB
             db_manager.rescan();
 
-            let mut state = GlobalState::new(db_manager);
-            
+            let input_cmd_tx = bus.input_cmd_tx.clone();
+            let mut state = GlobalState::new(db_manager, input_cmd_tx);
+
             let mut accumulator = Duration::new(0, 0);
             let mut last_time = Instant::now();
             let target_dt = Duration::from_secs_f64(1.0 / TPS as f64);
@@ -39,7 +40,7 @@ pub fn start_thread(bus: SystemBus, db_manager: DbManager) {
                         SystemEvent::Quit => {
                             log::info!("LOGIC: Quit received...");
                             state.shutdown();
-                            return; 
+                            return;
                         }
                         SystemEvent::Resize { width, height } => {
                             state.resize(width, height);
@@ -63,7 +64,7 @@ pub fn start_thread(bus: SystemBus, db_manager: DbManager) {
 
                 // 4. Rendu
                 let snapshot = state.create_snapshot();
-                let _ = bus.render_tx.try_send(snapshot); 
+                let _ = bus.render_tx.try_send(snapshot);
                 state.frame_end();
                 thread::sleep(Duration::from_millis(1));
             }

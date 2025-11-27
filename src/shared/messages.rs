@@ -22,8 +22,8 @@ pub enum LogicToMain {
     ExitApp,
     TransitionToResult(crate::models::menu::GameResultData),
     TransitionToMenu,
-    TransitionToEditor, 
-    ToggleSettings,     
+    TransitionToEditor,
+    ToggleSettings,
 }
 
 #[derive(Debug)]

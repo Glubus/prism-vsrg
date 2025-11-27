@@ -1,7 +1,7 @@
+use super::actions::{GameAction, KeyAction, UIAction};
+use crate::models::settings::SettingsState;
 use std::collections::HashMap;
 use winit::keyboard::KeyCode;
-use super::actions::{GameAction, UIAction, KeyAction};
-use crate::models::settings::SettingsState;
 
 #[derive(Clone)]
 pub struct KeyBindings {
@@ -41,8 +41,9 @@ impl KeyBindings {
 
     pub fn apply_column_bindings(&mut self, column_count: usize) {
         // On nettoie seulement les actions de HIT/RELEASE
-        self.game_binds.retain(|_, action| !matches!(action, GameAction::Hit(_) | GameAction::Release(_)));
-        
+        self.game_binds
+            .retain(|_, action| !matches!(action, GameAction::Hit(_) | GameAction::Release(_)));
+
         if let Some(keys) = self.column_maps.get(&column_count) {
             for (i, &keycode) in keys.iter().enumerate() {
                 // Si l'utilisateur bind une touche qui était déjà prise (ex: 'E'), ça l'écrase ici.
@@ -63,18 +64,25 @@ impl KeyBindings {
     }
 
     fn load_default_game_binds(&mut self) {
-        self.game_binds.insert(KeyCode::Space, GameAction::SkipIntro);
-        self.game_binds.insert(KeyCode::F3, GameAction::ChangeSpeed(-50)); 
-        self.game_binds.insert(KeyCode::F4, GameAction::ChangeSpeed(50)); 
+        self.game_binds
+            .insert(KeyCode::Space, GameAction::SkipIntro);
+        self.game_binds
+            .insert(KeyCode::F3, GameAction::ChangeSpeed(-50));
+        self.game_binds
+            .insert(KeyCode::F4, GameAction::ChangeSpeed(50));
         self.game_binds.insert(KeyCode::F5, GameAction::Restart);
         self.game_binds.insert(KeyCode::F8, GameAction::Rescan);
-        self.game_binds.insert(KeyCode::F11, GameAction::DecreaseNoteSize);
-        self.game_binds.insert(KeyCode::F12, GameAction::IncreaseNoteSize);
-        
+        self.game_binds
+            .insert(KeyCode::F11, GameAction::DecreaseNoteSize);
+        self.game_binds
+            .insert(KeyCode::F12, GameAction::IncreaseNoteSize);
+
         // KeyE est le raccourci standard
-        self.game_binds.insert(KeyCode::KeyE, GameAction::ToggleEditor);
+        self.game_binds
+            .insert(KeyCode::KeyE, GameAction::ToggleEditor);
         // F2 est le raccourci de secours (si E est bindé)
-        self.game_binds.insert(KeyCode::F2, GameAction::ToggleEditor);
+        self.game_binds
+            .insert(KeyCode::F2, GameAction::ToggleEditor);
     }
 
     fn default_ui_binds() -> HashMap<KeyCode, UIAction> {
@@ -89,44 +97,112 @@ impl KeyBindings {
         map.insert(KeyCode::PageUp, UIAction::TabNext);
         map.insert(KeyCode::PageDown, UIAction::TabPrev);
         // F12 est aussi utilisé pour Screenshot dans certains contextes
-        // map.insert(KeyCode::F12, UIAction::Screenshot); 
+        // map.insert(KeyCode::F12, UIAction::Screenshot);
         map
     }
 
     fn default_column_maps() -> HashMap<usize, Vec<KeyCode>> {
         let mut map = HashMap::new();
-        map.insert(4, vec![KeyCode::KeyD, KeyCode::KeyF, KeyCode::KeyJ, KeyCode::KeyK]);
-        map.insert(5, vec![KeyCode::KeyD, KeyCode::KeyF, KeyCode::Space, KeyCode::KeyJ, KeyCode::KeyK]);
-        map.insert(6, vec![KeyCode::KeyS, KeyCode::KeyD, KeyCode::KeyF, KeyCode::KeyJ, KeyCode::KeyK, KeyCode::KeyL]);
-        map.insert(7, vec![KeyCode::KeyS, KeyCode::KeyD, KeyCode::KeyF, KeyCode::Space, KeyCode::KeyJ, KeyCode::KeyK, KeyCode::KeyL]);
+        map.insert(
+            4,
+            vec![KeyCode::KeyD, KeyCode::KeyF, KeyCode::KeyJ, KeyCode::KeyK],
+        );
+        map.insert(
+            5,
+            vec![
+                KeyCode::KeyD,
+                KeyCode::KeyF,
+                KeyCode::Space,
+                KeyCode::KeyJ,
+                KeyCode::KeyK,
+            ],
+        );
+        map.insert(
+            6,
+            vec![
+                KeyCode::KeyS,
+                KeyCode::KeyD,
+                KeyCode::KeyF,
+                KeyCode::KeyJ,
+                KeyCode::KeyK,
+                KeyCode::KeyL,
+            ],
+        );
+        map.insert(
+            7,
+            vec![
+                KeyCode::KeyS,
+                KeyCode::KeyD,
+                KeyCode::KeyF,
+                KeyCode::Space,
+                KeyCode::KeyJ,
+                KeyCode::KeyK,
+                KeyCode::KeyL,
+            ],
+        );
         map
     }
 }
 
-fn parse_keycode(s: &str) -> Option<KeyCode> {
+pub fn parse_keycode(s: &str) -> Option<KeyCode> {
     match s {
-        "KeyA" => Some(KeyCode::KeyA), "KeyB" => Some(KeyCode::KeyB), "KeyC" => Some(KeyCode::KeyC),
-        "KeyD" => Some(KeyCode::KeyD), "KeyE" => Some(KeyCode::KeyE), "KeyF" => Some(KeyCode::KeyF),
-        "KeyG" => Some(KeyCode::KeyG), "KeyH" => Some(KeyCode::KeyH), "KeyI" => Some(KeyCode::KeyI),
-        "KeyJ" => Some(KeyCode::KeyJ), "KeyK" => Some(KeyCode::KeyK), "KeyL" => Some(KeyCode::KeyL),
-        "KeyM" => Some(KeyCode::KeyM), "KeyN" => Some(KeyCode::KeyN), "KeyO" => Some(KeyCode::KeyO),
-        "KeyP" => Some(KeyCode::KeyP), "KeyQ" => Some(KeyCode::KeyQ), "KeyR" => Some(KeyCode::KeyR),
-        "KeyS" => Some(KeyCode::KeyS), "KeyT" => Some(KeyCode::KeyT), "KeyU" => Some(KeyCode::KeyU),
-        "KeyV" => Some(KeyCode::KeyV), "KeyW" => Some(KeyCode::KeyW), "KeyX" => Some(KeyCode::KeyX),
-        "KeyY" => Some(KeyCode::KeyY), "KeyZ" => Some(KeyCode::KeyZ),
-        "Digit0" => Some(KeyCode::Digit0), "Digit1" => Some(KeyCode::Digit1), "Digit2" => Some(KeyCode::Digit2),
-        "Digit3" => Some(KeyCode::Digit3), "Digit4" => Some(KeyCode::Digit4), "Digit5" => Some(KeyCode::Digit5),
-        "Digit6" => Some(KeyCode::Digit6), "Digit7" => Some(KeyCode::Digit7), "Digit8" => Some(KeyCode::Digit8),
+        "KeyA" => Some(KeyCode::KeyA),
+        "KeyB" => Some(KeyCode::KeyB),
+        "KeyC" => Some(KeyCode::KeyC),
+        "KeyD" => Some(KeyCode::KeyD),
+        "KeyE" => Some(KeyCode::KeyE),
+        "KeyF" => Some(KeyCode::KeyF),
+        "KeyG" => Some(KeyCode::KeyG),
+        "KeyH" => Some(KeyCode::KeyH),
+        "KeyI" => Some(KeyCode::KeyI),
+        "KeyJ" => Some(KeyCode::KeyJ),
+        "KeyK" => Some(KeyCode::KeyK),
+        "KeyL" => Some(KeyCode::KeyL),
+        "KeyM" => Some(KeyCode::KeyM),
+        "KeyN" => Some(KeyCode::KeyN),
+        "KeyO" => Some(KeyCode::KeyO),
+        "KeyP" => Some(KeyCode::KeyP),
+        "KeyQ" => Some(KeyCode::KeyQ),
+        "KeyR" => Some(KeyCode::KeyR),
+        "KeyS" => Some(KeyCode::KeyS),
+        "KeyT" => Some(KeyCode::KeyT),
+        "KeyU" => Some(KeyCode::KeyU),
+        "KeyV" => Some(KeyCode::KeyV),
+        "KeyW" => Some(KeyCode::KeyW),
+        "KeyX" => Some(KeyCode::KeyX),
+        "KeyY" => Some(KeyCode::KeyY),
+        "KeyZ" => Some(KeyCode::KeyZ),
+        "Digit0" => Some(KeyCode::Digit0),
+        "Digit1" => Some(KeyCode::Digit1),
+        "Digit2" => Some(KeyCode::Digit2),
+        "Digit3" => Some(KeyCode::Digit3),
+        "Digit4" => Some(KeyCode::Digit4),
+        "Digit5" => Some(KeyCode::Digit5),
+        "Digit6" => Some(KeyCode::Digit6),
+        "Digit7" => Some(KeyCode::Digit7),
+        "Digit8" => Some(KeyCode::Digit8),
         "Digit9" => Some(KeyCode::Digit9),
-        "Space" => Some(KeyCode::Space), "Enter" => Some(KeyCode::Enter), "Escape" => Some(KeyCode::Escape),
-        "Backspace" => Some(KeyCode::Backspace), "Tab" => Some(KeyCode::Tab),
-        "ShiftLeft" => Some(KeyCode::ShiftLeft), "ShiftRight" => Some(KeyCode::ShiftRight),
-        "ControlLeft" => Some(KeyCode::ControlLeft), "ControlRight" => Some(KeyCode::ControlRight),
-        "AltLeft" => Some(KeyCode::AltLeft), "AltRight" => Some(KeyCode::AltRight),
-        "Semicolon" => Some(KeyCode::Semicolon), "Quote" => Some(KeyCode::Quote),
-        "Comma" => Some(KeyCode::Comma), "Period" => Some(KeyCode::Period), "Slash" => Some(KeyCode::Slash),
-        "Backslash" => Some(KeyCode::Backslash), "BracketLeft" => Some(KeyCode::BracketLeft), "BracketRight" => Some(KeyCode::BracketRight),
-        "Minus" => Some(KeyCode::Minus), "Equal" => Some(KeyCode::Equal),
+        "Space" => Some(KeyCode::Space),
+        "Enter" => Some(KeyCode::Enter),
+        "Escape" => Some(KeyCode::Escape),
+        "Backspace" => Some(KeyCode::Backspace),
+        "Tab" => Some(KeyCode::Tab),
+        "ShiftLeft" => Some(KeyCode::ShiftLeft),
+        "ShiftRight" => Some(KeyCode::ShiftRight),
+        "ControlLeft" => Some(KeyCode::ControlLeft),
+        "ControlRight" => Some(KeyCode::ControlRight),
+        "AltLeft" => Some(KeyCode::AltLeft),
+        "AltRight" => Some(KeyCode::AltRight),
+        "Semicolon" => Some(KeyCode::Semicolon),
+        "Quote" => Some(KeyCode::Quote),
+        "Comma" => Some(KeyCode::Comma),
+        "Period" => Some(KeyCode::Period),
+        "Slash" => Some(KeyCode::Slash),
+        "Backslash" => Some(KeyCode::Backslash),
+        "BracketLeft" => Some(KeyCode::BracketLeft),
+        "BracketRight" => Some(KeyCode::BracketRight),
+        "Minus" => Some(KeyCode::Minus),
+        "Equal" => Some(KeyCode::Equal),
         _ => None,
     }
 }

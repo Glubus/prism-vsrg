@@ -1,32 +1,35 @@
-mod system;
 mod input;
 mod logic;
 mod render;
+mod system;
 
 // Modules modèles/données (nécessaires)
-mod models;
-mod database;
 mod core;
+mod database;
+mod models;
+mod difficulty;
+mod shaders;
 mod shared;
 mod states;
 mod views;
-mod shaders;
 
 // mod renderer; // SUPPRIMÉ : L'ancien renderer est mort, vive le nouveau dans 'mod render' !
 
+use crate::database::DbManager;
 use crate::system::bus::SystemBus;
 use std::path::PathBuf;
-use crate::database::DbManager;
 
 fn main() {
-    unsafe { std::env::set_var("RUST_LOG", "info"); }
+    unsafe {
+        std::env::set_var("RUST_LOG", "info");
+    }
     env_logger::init();
-    
+
     log::info!("MAIN: Booting rVsrg 2.0...");
 
     let bus = SystemBus::new();
-    
-    let input_bus = bus.clone(); 
+
+    let input_bus = bus.clone();
     let logic_bus = bus.clone();
     let render_bus = bus.clone();
 
@@ -34,7 +37,7 @@ fn main() {
     let songs_path = PathBuf::from("songs");
     let db_manager = DbManager::new(db_path, songs_path);
 
-    let input_manager = input::manager::InputManager::new(); 
+    let input_manager = input::manager::InputManager::new();
 
     input::start_thread(input_bus, input_manager);
     logic::start_thread(logic_bus, db_manager);

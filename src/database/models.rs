@@ -16,11 +16,40 @@ pub struct Beatmap {
     pub path: String,
     pub difficulty_name: Option<String>,
     pub note_count: i32,
+    pub duration_ms: i32,
+    pub nps: f64,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct BeatmapRating {
+    pub id: i64,
+    pub beatmap_hash: String,
+    pub name: String,
+    pub overall: f64,
+    pub stream: f64,
+    pub jumpstream: f64,
+    pub handstream: f64,
+    pub stamina: f64,
+    pub jackspeed: f64,
+    pub chordjack: f64,
+    pub technical: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct BeatmapWithRatings {
+    pub beatmap: Beatmap,
+    pub ratings: Vec<BeatmapRating>,
+}
+
+impl BeatmapWithRatings {
+    pub fn new(beatmap: Beatmap, ratings: Vec<BeatmapRating>) -> Self {
+        Self { beatmap, ratings }
+    }
 }
 
 #[derive(Debug, Clone, FromRow)]
 pub struct Replay {
-    pub id: i64,
+    pub hash: String,
     pub beatmap_hash: String, // Référence vers beatmap.hash
     pub timestamp: i64,       // Timestamp Unix de la partie
     pub score: i32,

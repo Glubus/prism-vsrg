@@ -27,15 +27,15 @@ pub struct StateContext {
     renderer: Option<*mut Renderer>,
     db_manager: Option<*mut DbManager>,
     // NOUVEAU : Canal pour parler au cerveau (Logic)
-    pub logic_tx: Option<Sender<MainToLogic>>, 
+    pub logic_tx: Option<Sender<MainToLogic>>,
 }
 
 impl StateContext {
     // Mise à jour du constructeur
     pub fn new(
-        renderer: Option<*mut Renderer>, 
+        renderer: Option<*mut Renderer>,
         db_manager: Option<*mut DbManager>,
-        logic_tx: Option<Sender<MainToLogic>>
+        logic_tx: Option<Sender<MainToLogic>>,
     ) -> Self {
         Self {
             renderer,
@@ -65,7 +65,7 @@ impl StateContext {
             None
         }
     }
-    
+
     // NOUVEAU : Helper pour envoyer un message
     pub fn send_to_logic(&self, msg: MainToLogic) {
         if let Some(tx) = &self.logic_tx {

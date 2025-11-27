@@ -1,9 +1,9 @@
-use std::path::Path;
-use wgpu::{Device, Queue, Texture, TextureFormat, RenderPipeline, BindGroupLayout, Sampler};
-use wgpu_text::{BrushBuilder, TextBrush};
-use image::GenericImageView;
 use crate::models::engine::InstanceRaw; // Assurez-vous que ce modèle est accessible via models
 use crate::shaders::constants::MAIN_SHADER_SRC;
+use image::GenericImageView;
+use std::path::Path;
+use wgpu::{BindGroupLayout, Device, Queue, RenderPipeline, Sampler, Texture, TextureFormat};
+use wgpu_text::{BrushBuilder, TextBrush};
 
 // --- GESTION DES TEXTURES ---
 
@@ -223,7 +223,9 @@ pub fn load_text_brush(
 
     // Fallback si la police n'est pas trouvée
     let final_font = font.unwrap_or_else(|| {
-        log::warn!("Font not found or failed to load, using default (Hack: Empty Font might panic if used)");
+        log::warn!(
+            "Font not found or failed to load, using default (Hack: Empty Font might panic if used)"
+        );
         // Pour éviter le panic, idéalement on devrait avoir une police par défaut incluse en bytes (include_bytes!)
         // Ici on retourne une police vide qui risque de ne rien afficher, mais évite le crash immédiat si géré par wgpu_text
         FontArc::try_from_vec(vec![]).unwrap_or_else(|_| panic!("Fatal: No font available"))
