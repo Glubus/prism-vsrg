@@ -1,5 +1,3 @@
-//! Thin layer wrapping egui input collection and draw submission.
-
 use egui_wgpu::{Renderer as EguiRenderer, RendererOptions};
 use egui_winit::State as EguiState;
 use std::sync::Arc;
@@ -27,13 +25,14 @@ impl UiOverlay {
             None,
         );
 
-        // Use RendererOptions + depth_stencil_format (instead of the legacy depth_format).
+        // Correction : Utilisation de la struct RendererOptions
+        // et du champ depth_stencil_format (au lieu de depth_format)
         let renderer = EguiRenderer::new(
             device,
             output_format,
             RendererOptions {
                 depth_stencil_format: None,
-                // MSAA samples and dithering rely on defaults for now.
+                // msaa_samples et dithering sont gérés par les valeurs par défaut ou implicitement
                 ..Default::default()
             },
         );
@@ -92,7 +91,7 @@ impl UiOverlay {
                     load: wgpu::LoadOp::Load,
                     store: wgpu::StoreOp::Store,
                 },
-                // Add the missing depth_slice field to avoid wgpu warnings.
+                // Correction : Ajout du champ depth_slice manquant
                 depth_slice: None,
             })],
             depth_stencil_attachment: None,
@@ -100,7 +99,7 @@ impl UiOverlay {
             occlusion_query_set: None,
         });
 
-        // Lifetime hack required to bridge egui and WGPU.
+        // Hack de lifetime nécessaire pour Egui + WGPU
         let rpass_static = unsafe {
             std::mem::transmute::<&mut wgpu::RenderPass<'_>, &mut wgpu::RenderPass<'static>>(
                 &mut render_pass,

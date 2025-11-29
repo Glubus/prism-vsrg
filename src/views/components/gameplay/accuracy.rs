@@ -4,8 +4,7 @@ use wgpu_text::glyph_brush::{Section, Text};
 
 pub struct AccuracyDisplay {
     position: (f32, f32),
-    /// Configurable font size.
-    text_size: f32,
+    text_size: f32, // Configurable font size.
     text_buffer: String,
 }
 

@@ -1,14 +1,14 @@
 use crate::input::events::GameAction;
 use crate::logic::audio::AudioManager;
 use crate::models::engine::{
-    HIT_LINE_Y, HitWindow, NUM_COLUMNS, NoteData, VISIBLE_DISTANCE, load_map,
+    HitWindow, NUM_COLUMNS, NoteData, load_map,
 };
 use crate::models::replay::ReplayData;
 use crate::models::stats::{HitStats, Judgement};
 use crate::shared::snapshot::GameplaySnapshot;
+use std::collections::VecDeque;
 use std::path::PathBuf;
 
-/// Core gameplay runtime handling timing, scoring, and replay capture.
 pub struct GameEngine {
     pub chart: Vec<NoteData>,
     pub head_index: usize,
@@ -33,12 +33,15 @@ pub struct GameEngine {
     pub replay_data: ReplayData,
     pub beatmap_hash: Option<String>,
     started_audio: bool,
+
+    // NPS tracking
+    input_timestamps: VecDeque<f64>,
+    current_nps: f64,
 }
 
 impl GameEngine {
     const PRE_ROLL_MS: f64 = 3000.0;
 
-    /// Loads a beatmap, audio, and initializes runtime state.
     pub fn new(map_path: PathBuf, rate: f64, beatmap_hash: Option<String>) -> Self {
         let (audio_path, chart) = load_map(map_path);
 
@@ -65,10 +68,11 @@ impl GameEngine {
             rate,
             scroll_speed_ms: 500.0,
             hit_window: HitWindow::new(),
+            input_timestamps: VecDeque::new(),
+            current_nps: 0.0,
         }
     }
 
-    /// Advances the simulation, handles drift correction, and marks misses.
     pub fn update(&mut self, dt_seconds: f64) {
         // 1. Advance the smoothed clock.
         self.audio_clock += dt_seconds * 1000.0 * self.rate;
@@ -128,15 +132,19 @@ impl GameEngine {
             }
         }
         self.head_index = new_head;
+
+        // Update NPS: remove timestamps older than 1 second
+        self.update_nps();
     }
 
-    /// Applies a user action (tap/release/etc.) to the engine.
     pub fn handle_input(&mut self, action: GameAction) {
         match action {
             GameAction::Hit { column } => {
                 if column < self.keys_held.len() {
                     self.keys_held[column] = true;
                 }
+                // Record input timestamp for NPS calculation
+                self.input_timestamps.push_back(self.audio_clock);
                 self.process_hit(column);
             }
             GameAction::Release { column } => {
@@ -149,7 +157,6 @@ impl GameEngine {
         }
     }
 
-    /// Finds the best matching note for a tap and applies the resulting judgement.
     fn process_hit(&mut self, column: usize) {
         let current_time = self.audio_clock;
         let mut best_note_idx = None;
@@ -188,7 +195,6 @@ impl GameEngine {
         }
     }
 
-    /// Mutates score/combo/stats for the supplied judgement.
     fn apply_judgement(&mut self, j: Judgement) {
         match j {
             Judgement::Miss => {
@@ -225,6 +231,23 @@ impl GameEngine {
         }
     }
 
+    fn update_nps(&mut self) {
+        let current_time = self.audio_clock;
+        let window_start = current_time - 1000.0; // 1 second window
+
+        // Remove timestamps older than 1 second
+        while let Some(&oldest) = self.input_timestamps.front() {
+            if oldest < window_start {
+                self.input_timestamps.pop_front();
+            } else {
+                break;
+            }
+        }
+
+        // Calculate NPS: number of inputs in the last second
+        self.current_nps = self.input_timestamps.len() as f64;
+    }
+
     pub fn get_time(&self) -> f64 {
         self.audio_clock
     }
@@ -236,7 +259,6 @@ impl GameEngine {
         true
     }
 
-    /// Captures a render-ready snapshot (playfield notes + HUD stats).
     pub fn get_snapshot(&self) -> GameplaySnapshot {
         let effective_speed = self.scroll_speed_ms * self.rate;
         let max_visible_time = self.audio_clock + effective_speed;
@@ -264,10 +286,10 @@ impl GameEngine {
             remaining_notes: self.chart.len().saturating_sub(self.notes_passed as usize),
             last_hit_judgement: self.last_hit_judgement,
             last_hit_timing: self.last_hit_timing,
+            nps: self.current_nps,
         }
     }
 
-    /// Applies user settings to rebuild the active hit window thresholds.
     pub fn update_hit_window(&mut self, mode: crate::models::settings::HitWindowMode, value: f64) {
         self.hit_window = match mode {
             crate::models::settings::HitWindowMode::OsuOD => HitWindow::from_osu_od(value),

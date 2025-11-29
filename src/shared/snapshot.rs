@@ -43,4 +43,6 @@ pub struct GameplaySnapshot {
 
     pub last_hit_judgement: Option<Judgement>,
     pub last_hit_timing: Option<f64>,
+
+    pub nps: f64,
 }

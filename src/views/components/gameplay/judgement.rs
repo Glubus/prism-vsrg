@@ -80,7 +80,7 @@ impl JudgementPanel {
             y += spacing;
         }
 
-        // Display remaining notes and scroll speed underneath the judgement list.
+        // Info extra
         self.remaining_text = format!("Notes: {}", remaining_notes);
         sections.push(Section {
             screen_position: (x, y),

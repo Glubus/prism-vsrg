@@ -1,5 +1,3 @@
-//! Leaderboard list plus helper `ScoreCard` conversions.
-
 use crate::models::engine::hit_window::HitWindow;
 use crate::models::menu::GameResultData;
 use crate::models::replay::ReplayData;
@@ -7,7 +5,6 @@ use crate::views::components::menu::song_select::leaderboard_card::LeaderboardCa
 use egui::{Color32, ScrollArea};
 
 #[derive(Clone)]
-/// Lightweight view model built from DB replay rows.
 pub struct ScoreCard {
     pub timestamp: i64,
     pub rate: f64,
@@ -20,7 +17,6 @@ pub struct ScoreCard {
 }
 
 impl ScoreCard {
-    /// Builds a score card from a replay row, falling back to an empty replay if parsing fails.
     pub fn from_replay(
         replay: &crate::database::models::Replay,
         total_notes: usize,
@@ -44,23 +40,19 @@ impl ScoreCard {
     }
 }
 
-/// Leaderboard UI state that caches up to 10 score cards.
 pub struct Leaderboard {
     scores: Vec<ScoreCard>,
 }
 
 impl Leaderboard {
-    /// Returns an empty leaderboard.
     pub fn new() -> Self {
         Self { scores: Vec::new() }
     }
 
-    /// Replaces the leaderboard entries.
     pub fn update_scores(&mut self, scores: Vec<ScoreCard>) {
         self.scores = scores;
     }
 
-    /// Renders the leaderboard and returns a replay to preview if the user clicked a row.
     pub fn render(
         &self,
         ui: &mut egui::Ui,

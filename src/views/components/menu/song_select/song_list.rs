@@ -4,12 +4,11 @@ use crate::views::components::menu::song_select::difficulty_card::DifficultyCard
 use crate::views::components::menu::song_select::song_card::SongCard;
 use egui::{Align, Color32, ScrollArea, TextureId, scroll_area::ScrollBarVisibility};
 
-// Card height (80) + outer margin (8).
+// Hauteur Carte (80) + Marge (8)
 const ROW_HEIGHT: f32 = 88.0;
-// Difficulty row height (30) + inner margin (4) + spacing (4).
+// Hauteur Diff (30) + Marge interne (4) + Espace (4)
 const DIFFICULTY_HEIGHT: f32 = 38.0;
 
-/// Scrollable list that renders beatmapset cards plus their difficulty stacks.
 pub struct SongList {
     current: usize,
     need_scroll_to: Option<usize>,
@@ -37,11 +36,10 @@ impl SongList {
         self.current = current;
     }
 
-    /// Renders the scroll area and returns a UI action when selection changes.
     pub fn render(
         &mut self,
         ui: &mut egui::Ui,
-        menu_state: &MenuState, // Read-only reference.
+        menu_state: &MenuState, // Immutable !
         btn_tex: Option<TextureId>,
         btn_sel_tex: Option<TextureId>,
         diff_tex: Option<TextureId>,
@@ -83,8 +81,10 @@ impl SongList {
                     if need_scroll_to < beatmapsets.len() {
                         let current_y =
                             cumulative_heights.get(self.current).copied().unwrap_or(0.0);
-                        let target_y =
-                            cumulative_heights.get(need_scroll_to).copied().unwrap_or(0.0);
+                        let target_y = cumulative_heights
+                            .get(need_scroll_to)
+                            .copied()
+                            .unwrap_or(0.0);
                         let scroll_y = target_y - current_y;
                         self.current = need_scroll_to;
                         ui.scroll_with_delta(egui::Vec2::new(0.0, -1.0 * scroll_y));
@@ -134,14 +134,15 @@ impl SongList {
                         }
 
                         if sense.clicked() || sense.double_clicked() {
+                            // On émet l'action au lieu de changer l'état
                             action_triggered = Some(UIAction::SetSelection(id));
                             response.scroll_to_me(Some(Align::Center));
 
-                            // Return focus immediately so keyboard shortcuts keep working.
+                            // IMPORTANT : On rend le focus pour que les touches (E, Espace) remarchent tout de suite
                             ui.ctx().memory_mut(|m| m.surrender_focus(response.id));
 
                             if sense.double_clicked() {
-                                // Could emit UIAction::Select here to launch instantly if desired.
+                                // On pourrait envoyer UIAction::Select ici aussi pour lancer direct
                             }
                         }
 

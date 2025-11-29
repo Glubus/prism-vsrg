@@ -5,12 +5,11 @@ use crate::render::context::RenderContext;
 use crate::render::utils::*;
 use crate::shaders::constants::{BACKGROUND_SHADER_SRC, QUAD_SHADER_SRC};
 use crate::views::components::{
-    AccuracyDisplay, ComboDisplay, HitBarDisplay, JudgementFlash, JudgementPanel, PlayfieldDisplay,
-    ScoreDisplay,
+    AccuracyDisplay, ComboDisplay, HitBarDisplay, JudgementFlash, JudgementPanel, NpsDisplay,
+    PlayfieldDisplay, ScoreDisplay,
 };
 use crate::views::gameplay::GameplayView;
 use std::path::PathBuf;
-use wgpu::util::DeviceExt;
 
 pub struct RenderResources {
     pub render_pipeline: wgpu::RenderPipeline,
@@ -52,6 +51,7 @@ pub struct RenderResources {
     pub combo_display: ComboDisplay,
     pub judgement_flash: JudgementFlash,
     pub hit_bar: HitBarDisplay,
+    pub nps_display: NpsDisplay,
 }
 
 impl RenderResources {
@@ -358,6 +358,7 @@ impl RenderResources {
             combo_display: ComboDisplay::new(0., 0.),
             judgement_flash: JudgementFlash::new(0., 0.),
             hit_bar: HitBarDisplay::new(0., 0., 100., 20.),
+            nps_display: NpsDisplay::new(0., 0.),
         };
 
         // On applique la config initiale
@@ -365,16 +366,16 @@ impl RenderResources {
         res
     }
 
-    // Helper that previously lived out-of-line, now embedded to avoid linker issues.
+    // LA MÉTHODE MANQUANTE QUI PROVOQUAIT L'ERREUR
     pub fn apply_skin_config(&mut self, screen_width: f32, screen_height: f32) {
-        // Same implementation as before, just included directly here.
+        // Même implémentation que précédemment, mais incluse dans le fichier
         self.update_component_positions(screen_width, screen_height);
     }
 
     pub fn update_component_positions(&mut self, screen_width: f32, screen_height: f32) {
         let config = &self.skin.config;
 
-        // 1. Update playfield assets.
+        // 1. Mise à jour Playfield
         let pf = self.gameplay_view.playfield_component_mut();
         pf.config.note_width_pixels = config.note_width_px;
         pf.config.note_height_pixels = config.note_height_px;
@@ -398,7 +399,7 @@ impl RenderResources {
         pf.config.x_offset_pixels = x_offset;
         pf.config.y_offset_pixels = playfield_offset_y;
 
-        // 2. Update HUD resources.
+        // 2. Mise à jour HUD
         let default_combo_y = (screen_height / 2.0) - 80.0;
         let default_score_x = playfield_center_x + (playfield_width_px / 2.0) + 120.0;
         let default_score_y = screen_height * 0.05;
@@ -449,6 +450,14 @@ impl RenderResources {
             y: combo_pos.y + 30.0,
         });
         self.judgement_flash.set_position(flash_pos.x, flash_pos.y);
+
+        // NPS display: position it near the FPS (top right corner)
+        let nps_pos = UIElementPos {
+            x: screen_width - 120.0,
+            y: 50.0,
+        };
+        self.nps_display.set_position(nps_pos.x, nps_pos.y);
+        self.nps_display.set_size(20.0);
     }
 
     pub fn load_background(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, path_str: &str) {

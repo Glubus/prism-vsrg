@@ -1,9 +1,7 @@
-//! Menu state driver for the windowing/state machine layer.
-
 use super::{GameState, PlayStateController, StateContext, StateTransition};
 use crate::core::input::actions::{KeyAction, UIAction};
 use crate::models::menu::MenuState;
-use crate::shared::messages::MainToLogic; // Message channel to the logic thread
+use crate::shared::messages::MainToLogic; // NOUVEAU
 use std::sync::{Arc, Mutex};
 use winit::event::WindowEvent;
 
@@ -25,7 +23,7 @@ impl MenuStateController {
         }
     }
 
-    // Request that logic loads the selected map; it handles the heavy lifting.
+    // NOUVEAU : On envoie juste le chemin, la logique se débrouille pour charger
     fn request_load_map(&self, ctx: &mut StateContext, is_editor: bool) -> bool {
         let map_path = {
             if let Ok(state) = self.menu_state.lock() {
@@ -37,7 +35,7 @@ impl MenuStateController {
 
         if let Some(path) = map_path {
             ctx.send_to_logic(MainToLogic::LoadMap { path, is_editor });
-            return true; // Assume the load will proceed.
+            return true; // On assume que ça va charger
         }
         false
     }
@@ -50,7 +48,7 @@ impl GameState for MenuStateController {
             state.in_editor = false;
         });
 
-        // Local visual reset; snapshots will quickly overwrite it.
+        // Reset visuel local (optionnel, le snapshot écrasera ça vite)
         ctx.with_renderer(|renderer| {
             renderer.resources.leaderboard_scores_loaded = false;
             renderer.resources.current_leaderboard_hash = None;
@@ -63,14 +61,14 @@ impl GameState for MenuStateController {
         action: Option<KeyAction>,
         ctx: &mut StateContext,
     ) -> StateTransition {
-        // Logic already receives inputs via App.
-        // This layer only manages local state transitions on the main thread.
+        // La logique reçoit déjà les inputs via App.
+        // Ici on gère UNIQUEMENT les transitions d'état locales (Main Thread).
 
         if let Some(KeyAction::UI(action)) = action {
             match action {
                 UIAction::Select => {
                     if self.request_load_map(ctx, false) {
-                        // Switch to PlayState (which no longer owns heavy logic).
+                        // On passe en PlayState. Note : PlayState n'a plus de logique lourde.
                         return StateTransition::Replace(Box::new(PlayStateController::new(
                             Arc::clone(&self.menu_state),
                         )));
@@ -80,7 +78,8 @@ impl GameState for MenuStateController {
             }
         }
 
-        // Logic updates MenuState and the renderer draws it, so keep this controller lean.
+        // Le thread logique met à jour MenuState, le Renderer l'affiche.
+        // On laisse le MenuStateController minimaliste.
         StateTransition::None
     }
 }

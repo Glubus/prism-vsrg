@@ -426,7 +426,7 @@ impl ResultView {
         }
         let deduplicated_hits: Vec<_> = unique_hits.values().cloned().collect();
 
-        // Find min/max indices to normalize the X axis using note_index.
+        // Trouver les valeurs min/max pour normaliser (utiliser note_index pour la position X)
         let (min_time, max_time) = deduplicated_hits.iter().fold(
             (deduplicated_hits[0].note_index, deduplicated_hits[0].note_index),
             |(min, max), hit| {
@@ -438,7 +438,7 @@ impl ResultView {
         let timing_min = -timing_range;
         let timing_max = timing_range;
 
-        // Draw the center line representing 0 ms offset.
+        // Ligne centrale (timing = 0)
         let center_y = graph_y + graph_height / 2.0;
         quads.push(quad_from_rect(
             graph_x,
@@ -450,7 +450,7 @@ impl ResultView {
             self.screen_height,
         ));
 
-        // Colors for each judgement, matching the HitWindow thresholds.
+        // Couleurs pour les jugements - utiliser les mêmes seuils que HitWindow
         let get_color_for_timing = |timing: f64| -> [f32; 4] {
             let abs_timing = timing.abs();
             if abs_timing <= hit_window.marv_ms {
@@ -472,7 +472,7 @@ impl ResultView {
         let point_size = 3.0;
         
         for hit in &deduplicated_hits {
-            // Normalize X position (time axis).
+            // Normaliser la position X (temps)
             let time_ratio = if max_time > min_time {
                 (hit.note_index - min_time) as f32 / (max_time - min_time) as f32
             } else {
@@ -480,7 +480,7 @@ impl ResultView {
             };
             let point_x = graph_x + time_ratio * graph_width;
 
-            // Normalize Y position (timing offset).
+            // Normaliser la position Y (timing)
             let timing_ratio = ((hit.timing_ms - timing_min) / (timing_max - timing_min)) as f32;
             let timing_ratio = timing_ratio.clamp(0.0, 1.0);
             let point_y = graph_y + (1.0 - timing_ratio) * graph_height;

@@ -1,5 +1,3 @@
-//! Definitions and constructors for hit window timing thresholds.
-
 use crate::models::stats::Judgement;
 
 #[derive(Debug, Clone, Copy)]
@@ -13,7 +11,7 @@ pub struct HitWindow {
 }
 
 impl HitWindow {
-    /// Manual defaults used when no mode is selected.
+    /// Valeurs par défaut manuelles
     pub fn new() -> Self {
         Self {
             marv_ms: 16.0,
@@ -25,19 +23,20 @@ impl HitWindow {
         }
     }
 
-    /// Creates a window based on osu! Overall Difficulty.
+    /// Crée une HitWindow basée sur l'OD (Overall Difficulty) d'OSU.
+    /// Retourne `Self` au lieu d'un tuple.
     pub fn from_osu_od(od: f64) -> Self {
         Self {
-            marv_ms: 16.0,                 // Fixed (legacy behavior)
-            perfect_ms: 64.0 - (3.0 * od), // 300 window
-            great_ms: 97.0 - (3.0 * od),   // 100 window
-            good_ms: 127.0 - (3.0 * od),   // 50 window
-            bad_ms: 151.0 - (3.0 * od),    // Approximate bad
-            miss_ms: 188.0 - (3.0 * od),   // Miss threshold
+            marv_ms: 16.0,                 // Fixe (selon ton code précédent)
+            perfect_ms: 64.0 - (3.0 * od), // 300
+            great_ms: 97.0 - (3.0 * od),   // 100
+            good_ms: 127.0 - (3.0 * od),   // 50
+            bad_ms: 151.0 - (3.0 * od),    // (Approximation Bad)
+            miss_ms: 188.0 - (3.0 * od),   // (Seuil Miss)
         }
     }
 
-    /// Creates a window based on the Etterna judge level (J4 = standard).
+    /// Crée une HitWindow basée sur le Judge Level d'Etterna (J4 = Standard)
     pub fn from_etterna_judge(judge_level: u8) -> Self {
         let scale = if judge_level == 9 {
             0.2
@@ -51,7 +50,7 @@ impl HitWindow {
         let base_good = 135.0;
         let base_bad = 180.0;
 
-        // Etterna rule: Bad never drops below 180ms.
+        // Règle spéciale Etterna : Bad ne descend jamais sous 180ms
         let bad_calculated = (base_bad * scale).max(180.0);
 
         Self {
@@ -60,11 +59,11 @@ impl HitWindow {
             great_ms: base_great * scale,
             good_ms: base_good * scale,
             bad_ms: bad_calculated,
-            miss_ms: 500.0, // Standard Etterna miss window
+            miss_ms: 500.0, // Standard Etterna Miss window
         }
     }
 
-    /// Utility constructor for fully custom values.
+    /// Constructeur utilitaire pour des valeurs custom complètes
     pub fn from_custom(marv: f64, perf: f64, great: f64, good: f64, bad: f64, miss: f64) -> Self {
         Self {
             marv_ms: marv,
@@ -79,7 +78,7 @@ impl HitWindow {
     pub fn judge(&self, timing_diff_ms: f64) -> (Judgement, bool) {
         let abs_diff = timing_diff_ms.abs();
 
-        // If the timing exceeds the miss window treat it as a ghost tap.
+        // Si le timing dépasse la fenêtre de miss définie, c'est un Ghost Tap
         if abs_diff > self.miss_ms {
             return (Judgement::GhostTap, false);
         }
@@ -95,7 +94,7 @@ impl HitWindow {
         } else if abs_diff <= self.bad_ms {
             (Judgement::Bad, true)
         } else {
-            // Between bad and miss thresholds.
+            // Dans la zone entre Bad et Miss
             (Judgement::Miss, true)
         }
     }

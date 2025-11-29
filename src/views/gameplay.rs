@@ -1,4 +1,3 @@
-//! Renders the gameplay scene, overlays and HUD widgets.
 use bytemuck;
 use wgpu::{
     CommandEncoder, LoadOp, Operations, RenderPassColorAttachment, RenderPassDescriptor, StoreOp,
@@ -8,8 +7,8 @@ use wgpu_text::glyph_brush::Section;
 use crate::models::engine::{InstanceRaw, NUM_COLUMNS};
 use crate::shared::snapshot::GameplaySnapshot;
 use crate::views::components::{
-    AccuracyDisplay, ComboDisplay, HitBarDisplay, JudgementFlash, JudgementPanel, PlayfieldDisplay,
-    ScoreDisplay,
+    AccuracyDisplay, ComboDisplay, HitBarDisplay, JudgementFlash, JudgementPanel, NpsDisplay,
+    PlayfieldDisplay, ScoreDisplay,
 };
 use crate::views::context::GameplayRenderContext;
 
@@ -52,27 +51,31 @@ impl GameplayView {
         combo_display: &mut ComboDisplay,
         judgement_flash: &mut JudgementFlash,
         hit_bar: &mut HitBarDisplay,
+        nps_display: &mut NpsDisplay,
     ) -> Result<(), wgpu::SurfaceError> {
         let effective_scroll_speed = snapshot.scroll_speed * snapshot.rate;
 
         // --- INTERPOLATION ---
-        // The snapshot was captured a few milliseconds ago (e.g. 3 ms).
-        // Advance the audio clock by the elapsed real time.
+        // Le snapshot a été créé il y a quelques millisecondes (ex: 3ms).
+        // Depuis, le temps réel a avancé. On ajoute ce delta au temps audio.
         let now = std::time::Instant::now();
-        // Safety: if the clock jumps backwards (rare), clamp the delta to zero.
-        let delta_time = now.duration_since(snapshot.timestamp).as_secs_f64() * 1000.0;
+        // Sécurité : si l'horloge a sauté en arrière (rare mais possible), on prend 0
+        let delta_time_ms = now.duration_since(snapshot.timestamp).as_secs_f64() * 1000.0;
+        
+        // Limiter le delta pour éviter les sauts trop grands (ex: si le thread a été bloqué)
+        let clamped_delta = delta_time_ms.min(50.0); // Max 50ms d'interpolation
 
-        // Assume gameplay is not paused (future: wire an `is_paused` flag).
-        let interpolated_time = snapshot.audio_time + (delta_time * snapshot.rate);
+        // On suppose que le jeu n'est pas en pause (à améliorer plus tard avec un flag is_paused)
+        let interpolated_time = snapshot.audio_time + (clamped_delta * snapshot.rate);
 
-        // 1. Compute positions using the interpolated time.
+        // 1. Calcul positions avec le temps interpolé
         let instances_with_columns = self.playfield_component.render_notes(
             &snapshot.visible_notes,
             interpolated_time, // Utilisation du temps fluide
             effective_scroll_speed,
             ctx.pixel_system,
         );
-        // Group instances per column.
+        // Tri par colonne
         self.instance_cache.clear();
         for col_vec in &mut self.column_instances_cache {
             col_vec.clear();
@@ -101,7 +104,7 @@ impl GameplayView {
             );
         }
 
-        // 2. Text overlay
+        // 2. Texte (inchangé)
         let mut text_sections = Vec::new();
         let fps_text = format!("{:.0}", ctx.fps);
         text_sections.push(Section {
@@ -145,12 +148,17 @@ impl GameplayView {
             ctx.screen_width,
             ctx.screen_height,
         ));
+        text_sections.extend(nps_display.render(
+            snapshot.nps,
+            ctx.screen_width,
+            ctx.screen_height,
+        ));
 
         ctx.text_brush
             .queue(ctx.device, ctx.queue, text_sections)
             .map_err(|_| wgpu::SurfaceError::Lost)?;
 
-        // 3. Rendering
+        // 3. Rendu
         let receptor_instances = self.playfield_component.render_receptors(ctx.pixel_system);
         if !receptor_instances.is_empty() {
             ctx.queue.write_buffer(
@@ -160,8 +168,9 @@ impl GameplayView {
             );
         }
 
-        // --- IMPORTANT ---
-        // Reuse the command encoder provided by the caller instead of creating one.
+        // --- CORRECTION MAJEURE ICI ---
+        // On n'utilise PLUS ctx.device.create_command_encoder()
+        // On utilise 'encoder' passé en paramètre.
 
         {
             let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
@@ -170,7 +179,7 @@ impl GameplayView {
                     view: ctx.view,
                     resolve_target: None,
                     ops: Operations {
-                        load: LoadOp::Load, // Draw on top of the background
+                        load: LoadOp::Load, // On dessine par-dessus le background
                         store: StoreOp::Store,
                     },
                     depth_slice: None,
@@ -223,6 +232,6 @@ impl GameplayView {
             ctx.text_brush.draw(&mut render_pass);
         }
 
-        Ok(()) // No extra buffer to return; everything was recorded into the main encoder.
+        Ok(()) // On ne retourne plus de buffer, on a écrit dans l'encoder principal
     }
 }

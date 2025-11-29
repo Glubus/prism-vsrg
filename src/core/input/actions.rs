@@ -1,5 +1,3 @@
-//! Canonical action enums shared between input layers.
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum GameAction {
     Hit(usize),
@@ -28,7 +26,7 @@ pub enum UIAction {
     Screenshot,
     ToggleFullscreen,
     ToggleSettings,
-    // Absolute cursor-driven actions (e.g., mouse selection).
+    // NOUVEAU : Actions absolues pour la souris
     SetSelection(usize),
     SetDifficulty(usize),
 }

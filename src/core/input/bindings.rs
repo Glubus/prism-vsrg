@@ -76,7 +76,7 @@ impl KeyBindings {
         self.game_binds
             .insert(KeyCode::F12, GameAction::IncreaseNoteSize);
 
-        // KeyE is the default shortcut.
+        // KeyE est le raccourci standard
         self.game_binds
             .insert(KeyCode::KeyE, GameAction::ToggleEditor);
         // F2 serves as the backup shortcut if E is remapped.

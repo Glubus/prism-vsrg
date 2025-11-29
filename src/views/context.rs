@@ -1,10 +1,8 @@
-//! Shared data passed into gameplay rendering components.
-
 use crate::models::engine::PixelSystem;
 use wgpu::{BindGroup, Buffer, Device, Queue, RenderPipeline, TextureView};
 use wgpu_text::TextBrush;
 
-/// Bundles resources required to draw a single gameplay frame.
+/// Regroupe toutes les ressources nécessaires pour dessiner une frame de jeu
 pub struct GameplayRenderContext<'a> {
     pub device: &'a Device,
     pub queue: &'a Queue,

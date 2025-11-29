@@ -1,5 +1,3 @@
-//! Generates mesh instances for notes, receptors and HUD playfield elements.
-
 use crate::models::engine::{
     HIT_LINE_Y, InstanceRaw, NUM_COLUMNS, NoteData, PixelSystem, PlayfieldConfig, VISIBLE_DISTANCE,
 };
@@ -22,7 +20,7 @@ impl PlayfieldDisplay {
     pub fn get_bounds(&self, pixel_system: &PixelSystem) -> (f32, f32) {
         let total_width_px = self.get_total_width_pixels();
         let width_norm = pixel_system.x_pixels_to_normalized(total_width_px);
-        let x = -width_norm / 2.0; // Center align
+        let x = -width_norm / 2.0; // Centré
         (x, width_norm)
     }
 
@@ -36,14 +34,14 @@ impl PlayfieldDisplay {
     ) -> Vec<(usize, InstanceRaw)> {
         let (playfield_left_x, _) = self.get_bounds(pixel_system);
 
-        // Convert pixel coordinates to normalized device coordinates.
+        // Conversion pixels -> normalisé GPU
         let column_width_norm =
             pixel_system.x_pixels_to_normalized(self.config.column_width_pixels);
         let spacing_norm = pixel_system.x_pixels_to_normalized(self.config.receptor_spacing_pixels);
         let note_width_norm = pixel_system.x_pixels_to_normalized(self.config.note_width_pixels);
         let note_height_norm = pixel_system.y_pixels_to_normalized(self.config.note_height_pixels);
 
-        // Apply global offsets (e.g. config-driven playfield shift).
+        // Offsets globaux (ex: config pour déplacer le playfield)
         let x_offset_norm = pixel_system.x_pixels_to_normalized(self.config.x_offset_pixels);
         let y_offset_norm = pixel_system.y_pixels_to_normalized(self.config.y_offset_pixels);
 
@@ -54,12 +52,12 @@ impl PlayfieldDisplay {
                 continue;
             }
 
-            // Scroll physics: distance = time / speed.
+            // Physique de défilement : Distance = Temps / Vitesse
             let time_to_hit = note.timestamp_ms - song_time;
             let progress = time_to_hit / scroll_speed_ms; // 0 = sur la ligne, 1 = en haut
 
-            // Position Y (HitLine + Distance)
-            let y_pos = HIT_LINE_Y + y_offset_norm + (VISIBLE_DISTANCE * progress as f32);
+            // Position Y (HitLine + Distance) - Garder f64 pour la précision jusqu'au cast final
+            let y_pos = (HIT_LINE_Y as f64 + y_offset_norm as f64 + (VISIBLE_DISTANCE as f64 * progress)) as f32;
 
             // Position X (Colonne)
             let col_offset = note.column as f32 * (column_width_norm + spacing_norm);
@@ -77,7 +75,7 @@ impl PlayfieldDisplay {
         instances
     }
 
-    /// Generates instances for the fixed receptors at the bottom of the lane.
+    /// Génère les instances pour les récepteurs fixes (en bas)
     pub fn render_receptors(&self, pixel_system: &PixelSystem) -> Vec<InstanceRaw> {
         let (playfield_left_x, _) = self.get_bounds(pixel_system);
 

@@ -5,8 +5,7 @@ use crate::database::models::{BeatmapRating, BeatmapWithRatings, Beatmapset};
 use crate::models::settings::HitWindowMode;
 
 pub struct BeatmapInfo {
-    /// 0 = Etterna tab, 1 = osu! tab.
-    selected_rating_tab: u8,
+    selected_rating_tab: u8, // 0 = Etterna, 1 = Osu
 }
 
 impl BeatmapInfo {
@@ -72,12 +71,12 @@ impl BeatmapInfo {
 
                     // BPM (still constant for now)
                     ui.label(RichText::new("BPM:").strong());
-                    ui.label("180"); // Placeholder until BPM metadata is wired up.
+                    ui.label("180"); // Constante pour l'instant
                     ui.add_space(15.0);
 
                     // Mapper (placeholder for now)
                     ui.label(RichText::new("Mapper:").strong());
-                    ui.label("Unknown"); // Placeholder until mapper metadata is wired up.
+                    ui.label("Unknown"); // Constante pour l'instant
                 });
 
                 ui.add_space(10.0);
