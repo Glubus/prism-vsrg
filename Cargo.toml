@@ -2,30 +2,35 @@
 name = "rvsrg"
 version = "0.1.0"
 edition = "2024"
+description = "A vertical scrolling rhythm game (VSRG) written in Rust"
+license = "MIT"
+repository = "https://github.com/Glubus/rvsrg"
+keywords = ["rhythm-game", "vsrg", "osu", "etterna"]
+categories = ["games"]
 
 [dependencies]
 toml = "0.8"
 serde = { version = "1.0", features = ["derive"] }
-# Gestion de la fenêtre
+# Window management
 winit = "0.30"
 
-# Moteur graphique (WebGPU)
+# Graphics engine (WebGPU)
 wgpu = "27.0"
 
-# Pour gérer l'asynchrone dans le main (wgpu est async)
+# Async runtime for wgpu initialization
 pollster = "0.4"
 
-# Chargement d'images (PNG, JPG)
+# Image loading (PNG, JPG)
 image = "0.24"
 
-# Pour envoyer des structures Rust brutes vers la mémoire GPU
+# Send raw Rust structs to GPU memory
 bytemuck = { version = "1.14", features = ["derive"] }
 
-# Logs (utile pour debugger wgpu)
+# Logging (useful for debugging wgpu)
 env_logger = "0.11"
 log = "0.4"
 
-# Génération aléatoire (Optionnel pour la version Chart, requis pour la version random)
+# Random generation (optional for chart mode, required for random mode)
 rand = "0.9"
 wgpu_text = "27.0.1"
 rosu-map = "0.2.1"

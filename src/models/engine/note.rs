@@ -12,7 +12,7 @@ pub struct NoteData {
 
 /// Charge une map depuis un fichier .osu.
 /// Retourne le chemin audio et la liste des notes.
-/// 
+///
 /// # Panics
 /// Panic si le fichier ne peut pas être lu ou si la map contient des colonnes invalides.
 pub fn load_map(path: PathBuf) -> (PathBuf, Vec<NoteData>) {
@@ -69,17 +69,17 @@ pub fn x_to_column(x: i32) -> Option<usize> {
     // Pour 7K: colonnes à 36, 109, 182, 256, 329, 402, 475
     // Formule générale: column_width = 512 / key_count
     // Position = column_width / 2 + column_index * column_width
-    
+
     // Valeurs communes pour 4K (le plus fréquent)
     match x {
         64 => Some(0),
         192 => Some(1),
         320 => Some(2),
         448 => Some(3),
-        // 5K
+        // 5K (center column at 256)
         51 => Some(0),
         153 => Some(1),
-        256 => Some(2),
+        // 256 handled by 7K below (same center position)
         358 => Some(3),
         460 => Some(4),
         // 6K
@@ -89,23 +89,23 @@ pub fn x_to_column(x: i32) -> Option<usize> {
         298 => Some(3),
         384 => Some(4),
         469 => Some(5),
-        // 7K
+        // 7K (center column at 256, also used by 5K)
         36 => Some(0),
         109 => Some(1),
         182 => Some(2),
-        256 => Some(3), // Déjà défini pour 5K, Rust prend le premier match
+        256 => Some(2), // Center column for 5K/7K
         329 => Some(4),
         402 => Some(5),
         475 => Some(6),
         _ => {
-            // Fallback: essayer de calculer la colonne
-            // Supposons 4K par défaut
+            // Fallback: try to calculate column
+            // Assume 4K by default
             let column_width = 512 / 4;
             let col = (x - column_width / 2) / column_width;
-            if col >= 0 && col < 10 {
+            if (0..10).contains(&col) {
                 Some(col as usize)
             } else {
-                log::warn!("Unknown column position: {}", x);
+                log::warn!("Unknown column position: {x}");
                 None
             }
         }

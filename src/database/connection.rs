@@ -1,5 +1,7 @@
 //! Database connection helpers built on top of sqlx/SQLite.
 
+#![allow(dead_code)]
+
 use crate::database::models::{BeatmapRating, BeatmapWithRatings, Beatmapset};
 use crate::database::query;
 use sqlx::{SqlitePool, sqlite::SqliteConnectOptions};
@@ -19,15 +21,14 @@ impl Database {
     /// Opens (or creates) the SQLite database file.
     pub async fn new(db_path: &Path) -> Result<Self, sqlx::Error> {
         // Ensure the parent directory exists.
-        if let Some(parent) = db_path.parent() {
-            if !parent.exists() {
-                if let Err(e) = std::fs::create_dir_all(parent) {
-                    return Err(sqlx::Error::Io(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Unable to create parent directory: {}", e),
-                    )));
-                }
-            }
+        if let Some(parent) = db_path.parent()
+            && !parent.exists()
+            && let Err(e) = std::fs::create_dir_all(parent)
+        {
+            return Err(sqlx::Error::Io(std::io::Error::other(format!(
+                "Unable to create parent directory: {}",
+                e
+            ))));
         }
 
         // sqlx prefers absolute paths for SQLite.

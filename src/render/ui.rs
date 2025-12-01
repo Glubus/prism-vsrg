@@ -1,7 +1,7 @@
 use egui_wgpu::{Renderer as EguiRenderer, RendererOptions};
 use egui_winit::State as EguiState;
 use std::sync::Arc;
-use wgpu::{Device, Queue, TextureFormat};
+use wgpu::{Device, TextureFormat};
 use winit::event::WindowEvent;
 use winit::window::Window;
 

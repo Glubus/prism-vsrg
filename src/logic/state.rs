@@ -5,6 +5,7 @@ use crate::models::menu::{GameResultData, MenuState};
 use crate::models::replay::simulate_replay;
 use crate::models::settings::{HitWindowMode, SettingsState};
 use crate::shared::snapshot::{EditorSnapshot, RenderState};
+use crate::system::bus::SystemBus;
 use crossbeam_channel::Sender;
 use serde_json;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -38,11 +39,12 @@ pub struct GlobalState {
     requested_leaderboard_hash: Option<String>,
     settings: SettingsState,
     input_cmd_tx: Sender<InputCommand>,
+    bus: SystemBus,
 }
 
 impl GlobalState {
     /// Creates a new state machine with default menu/settings and DB plumbing.
-    pub fn new(db_manager: DbManager, input_cmd_tx: Sender<InputCommand>) -> Self {
+    pub fn new(db_manager: DbManager, input_cmd_tx: Sender<InputCommand>, bus: SystemBus) -> Self {
         log::info!("LOGIC: Initializing Global State");
         let settings = SettingsState::load();
         let menu = MenuState::new();
@@ -56,6 +58,7 @@ impl GlobalState {
             requested_leaderboard_hash: None,
             settings,
             input_cmd_tx,
+            bus,
         }
     }
 
@@ -76,7 +79,7 @@ impl GlobalState {
             AppState::Game(engine) => {
                 engine.update(dt);
                 if engine.is_finished() {
-                    // Simuler le replay pour obtenir les résultats détaillés (hit_timings, etc.)
+                    // Simulate replay to get detailed results (hit_timings, etc.)
                     let chart = engine.get_chart();
                     let replay_result =
                         simulate_replay(&engine.replay_data, &chart, &engine.hit_window);
@@ -119,45 +122,42 @@ impl GlobalState {
     /// Mirrors database snapshots into the menu whenever new data is available.
     fn sync_db_to_menu(&mut self) {
         let db_state_arc = self.db_manager.get_state();
-        if let Ok(guard) = db_state_arc.try_lock() {
-            if matches!(guard.status, DbStatus::Idle) {
-                if guard.version != self.last_db_version {
-                    let mut request_hash = None;
-                    let mut cache = None;
-                    if let AppState::Menu(menu) = &mut self.current_state {
-                        menu.beatmapsets = guard.beatmapsets.clone();
-                        menu.start_index = 0;
-                        menu.end_index = menu.visible_count.min(menu.beatmapsets.len());
-                        menu.selected_index = 0;
-                        menu.selected_difficulty_index = 0;
-                        request_hash = menu.get_selected_beatmap_hash();
-                        cache = Some(menu.clone());
-                    }
-                    if let Some(menu) = cache {
-                        self.cache_menu_state(menu);
-                    }
-                    self.request_leaderboard_for_hash(request_hash);
-                    self.last_db_version = guard.version;
+        if let Ok(guard) = db_state_arc.try_lock()
+            && matches!(guard.status, DbStatus::Idle)
+        {
+            if guard.version != self.last_db_version {
+                let mut request_hash = None;
+                let mut cache = None;
+                if let AppState::Menu(menu) = &mut self.current_state {
+                    menu.beatmapsets = guard.beatmapsets.clone();
+                    menu.start_index = 0;
+                    menu.end_index = menu.visible_count.min(menu.beatmapsets.len());
+                    menu.selected_index = 0;
+                    menu.selected_difficulty_index = 0;
+                    request_hash = menu.get_selected_beatmap_hash();
+                    cache = Some(menu.clone());
                 }
+                if let Some(menu) = cache {
+                    self.cache_menu_state(menu);
+                }
+                self.request_leaderboard_for_hash(request_hash);
+                self.last_db_version = guard.version;
+            }
 
-                if guard.leaderboard_version != self.last_leaderboard_version {
-                    let mut cache = None;
-                    if let AppState::Menu(menu) = &mut self.current_state {
-                        menu.set_leaderboard(
-                            guard.leaderboard_hash.clone(),
-                            guard.leaderboard.clone(),
-                        );
-                        cache = Some(menu.clone());
-                    }
-                    if let Some(menu) = cache {
-                        self.cache_menu_state(menu);
-                    }
-                    self.last_leaderboard_version = guard.leaderboard_version;
-                    if let Some(hash) = &guard.leaderboard_hash {
-                        if self.requested_leaderboard_hash.as_deref() == Some(hash.as_str()) {
-                            self.requested_leaderboard_hash = None;
-                        }
-                    }
+            if guard.leaderboard_version != self.last_leaderboard_version {
+                let mut cache = None;
+                if let AppState::Menu(menu) = &mut self.current_state {
+                    menu.set_leaderboard(guard.leaderboard_hash.clone(), guard.leaderboard.clone());
+                    cache = Some(menu.clone());
+                }
+                if let Some(menu) = cache {
+                    self.cache_menu_state(menu);
+                }
+                self.last_leaderboard_version = guard.leaderboard_version;
+                if let Some(hash) = &guard.leaderboard_hash
+                    && self.requested_leaderboard_hash.as_deref() == Some(hash.as_str())
+                {
+                    self.requested_leaderboard_hash = None;
                 }
             }
         }
@@ -173,11 +173,11 @@ impl GlobalState {
 
     /// Asks the DB thread to refresh leaderboard data for a beatmap hash.
     fn request_leaderboard_for_hash(&mut self, hash: Option<String>) {
-        if let Some(hash) = hash {
-            if self.requested_leaderboard_hash.as_deref() != Some(hash.as_str()) {
-                self.db_manager.fetch_leaderboard(&hash);
-                self.requested_leaderboard_hash = Some(hash);
-            }
+        if let Some(hash) = hash
+            && self.requested_leaderboard_hash.as_deref() != Some(hash.as_str())
+        {
+            self.db_manager.fetch_leaderboard(&hash);
+            self.requested_leaderboard_hash = Some(hash);
         }
     }
 
@@ -278,8 +278,8 @@ impl GlobalState {
             ..
         } = &mut self.current_state
         {
-            // Ne pas nettoyer modification_buffer ici - il sera traité dans create_snapshot
-            // et nettoyé seulement après avoir été utilisé
+            // Don't clear modification_buffer here - it will be processed in create_snapshot
+            // and cleared only after being used
             *save_requested = false;
         }
     }
@@ -296,18 +296,18 @@ impl GlobalState {
                 modification_buffer,
                 save_requested,
             } => {
-                let modification = if let (Some(t), Some((dx, dy))) = (target.as_ref(), modification_buffer.as_ref())
+                let modification = if let (Some(t), Some((dx, dy))) =
+                    (target.as_ref(), modification_buffer.as_ref())
                 {
                     Some((*t, *mode, *dx, *dy))
                 } else {
                     None
                 };
-                
-                // Nettoyer le buffer après l'avoir utilisé
+
+                // Clear the buffer after using it
                 if modification.is_some() {
                     *modification_buffer = None;
                 }
-                
 
                 let status_text = if let Some(t) = target.as_ref() {
                     format!("EDIT: {:?} [{}]", t, mode)
@@ -347,11 +347,7 @@ impl GlobalState {
 
 impl GameAction {
     /// Handles menu-specific behavior for this action.
-    fn apply_to_menu(
-        &self,
-        state: &mut GlobalState,
-        menu: &mut MenuState,
-    ) -> Option<AppState> {
+    fn apply_to_menu(&self, state: &mut GlobalState, menu: &mut MenuState) -> Option<AppState> {
         match self {
             GameAction::Navigation { x, y } => {
                 if *y < 0 {
@@ -394,20 +390,29 @@ impl GameAction {
                 None
             }
             GameAction::Confirm => {
-                // Utiliser la chart cachée si disponible, sinon charger depuis le fichier
+                // Use cached chart if available, otherwise load from file
                 let engine = if let Some(cache) = menu.get_cached_chart() {
-                    // Reset les notes hit pour le nouveau gameplay
-                    let chart: Vec<_> = cache.chart.iter().map(|n| crate::models::engine::NoteData {
-                        timestamp_ms: n.timestamp_ms,
-                        column: n.column,
-                        hit: false,
-                    }).collect();
-                    
-                    // Utiliser le hash du cache (garanti cohérent avec la chart)
+                    // Reset hit notes for new gameplay
+                    let chart: Vec<_> = cache
+                        .chart
+                        .iter()
+                        .map(|n| crate::models::engine::NoteData {
+                            timestamp_ms: n.timestamp_ms,
+                            column: n.column,
+                            hit: false,
+                        })
+                        .collect();
+
+                    // Use cache hash (guaranteed consistent with chart)
                     let beatmap_hash = Some(cache.beatmap_hash.clone());
-                    
-                    log::info!("GAME: Using cached chart ({} notes, hash: {:?})", chart.len(), beatmap_hash);
+
+                    log::info!(
+                        "GAME: Using cached chart ({} notes, hash: {:?})",
+                        chart.len(),
+                        beatmap_hash
+                    );
                     GameEngine::from_cached(
+                        &state.bus,
                         chart,
                         cache.audio_path.clone(),
                         menu.rate,
@@ -417,8 +422,12 @@ impl GameAction {
                     )
                 } else if let Some(path) = menu.get_selected_beatmap_path() {
                     let beatmap_hash = menu.get_selected_beatmap_hash();
-                    log::info!("GAME: Loading chart from file (no cache), hash: {:?}", beatmap_hash);
+                    log::info!(
+                        "GAME: Loading chart from file (no cache), hash: {:?}",
+                        beatmap_hash
+                    );
                     GameEngine::new(
+                        &state.bus,
                         path,
                         menu.rate,
                         beatmap_hash,
@@ -428,23 +437,84 @@ impl GameAction {
                 } else {
                     return None;
                 };
-                
+
                 let mut engine = engine;
                 engine.scroll_speed_ms = state.settings.scroll_speed;
-                engine.audio_manager
+                engine
+                    .audio_manager
                     .set_volume(state.settings.master_volume);
-                return Some(AppState::Game(engine));
+                Some(AppState::Game(engine))
+            }
+            GameAction::LaunchPractice => {
+                // Like Confirm, but enables Practice mode
+                let engine = if let Some(cache) = menu.get_cached_chart() {
+                    let chart: Vec<_> = cache
+                        .chart
+                        .iter()
+                        .map(|n| crate::models::engine::NoteData {
+                            timestamp_ms: n.timestamp_ms,
+                            column: n.column,
+                            hit: false,
+                        })
+                        .collect();
+
+                    let beatmap_hash = Some(cache.beatmap_hash.clone());
+
+                    log::info!(
+                        "PRACTICE: Using cached chart ({} notes, hash: {:?})",
+                        chart.len(),
+                        beatmap_hash
+                    );
+                    GameEngine::from_cached(
+                        &state.bus,
+                        chart,
+                        cache.audio_path.clone(),
+                        menu.rate,
+                        beatmap_hash,
+                        state.settings.hit_window_mode,
+                        state.settings.hit_window_value,
+                    )
+                } else if let Some(path) = menu.get_selected_beatmap_path() {
+                    let beatmap_hash = menu.get_selected_beatmap_hash();
+                    log::info!(
+                        "PRACTICE: Loading chart from file (no cache), hash: {:?}",
+                        beatmap_hash
+                    );
+                    GameEngine::new(
+                        &state.bus,
+                        path,
+                        menu.rate,
+                        beatmap_hash,
+                        state.settings.hit_window_mode,
+                        state.settings.hit_window_value,
+                    )
+                } else {
+                    return None;
+                };
+
+                let mut engine = engine;
+                engine.scroll_speed_ms = state.settings.scroll_speed;
+                engine
+                    .audio_manager
+                    .set_volume(state.settings.master_volume);
+                engine.enable_practice_mode(); // Active le mode practice
+                Some(AppState::Game(engine))
             }
             GameAction::ToggleEditor => {
                 // Utiliser la chart cachée si disponible
                 let engine = if let Some(cache) = menu.get_cached_chart() {
-                    let chart: Vec<_> = cache.chart.iter().map(|n| crate::models::engine::NoteData {
-                        timestamp_ms: n.timestamp_ms,
-                        column: n.column,
-                        hit: false,
-                    }).collect();
-                    
+                    let chart: Vec<_> = cache
+                        .chart
+                        .iter()
+                        .map(|n| crate::models::engine::NoteData {
+                            timestamp_ms: n.timestamp_ms,
+                            column: n.column,
+                            hit: false,
+                        })
+                        .collect();
+
                     GameEngine::from_cached(
+                        &state.bus,
                         chart,
                         cache.audio_path.clone(),
                         1.0,
@@ -454,6 +524,7 @@ impl GameAction {
                     )
                 } else if let Some(path) = menu.get_selected_beatmap_path() {
                     GameEngine::new(
+                        &state.bus,
                         path,
                         1.0,
                         None,
@@ -463,19 +534,20 @@ impl GameAction {
                 } else {
                     return None;
                 };
-                
+
                 let mut engine = engine;
                 engine.scroll_speed_ms = state.settings.scroll_speed;
-                engine.audio_manager
+                engine
+                    .audio_manager
                     .set_volume(state.settings.master_volume);
 
-                return Some(AppState::Editor {
+                Some(AppState::Editor {
                     engine,
                     target: None,
                     mode: EditMode::Move,
                     modification_buffer: None,
                     save_requested: false,
-                });
+                })
             }
             GameAction::TabNext => {
                 menu.increase_rate();
@@ -506,9 +578,7 @@ impl GameAction {
                 state.last_leaderboard_version = 0;
                 None
             }
-            GameAction::SetResult(result_data) => {
-                Some(AppState::Result(result_data.clone()))
-            }
+            GameAction::SetResult(result_data) => Some(AppState::Result(result_data.clone())),
             GameAction::TogglePause
             | GameAction::Hit { .. }
             | GameAction::Release { .. }
@@ -517,16 +587,14 @@ impl GameAction {
             | GameAction::EditorSelect(_)
             | GameAction::EditorModify { .. }
             | GameAction::EditorSave
-            | GameAction::ReloadKeybinds => None,
+            | GameAction::ReloadKeybinds
+            | GameAction::PracticeCheckpoint
+            | GameAction::PracticeRetry => None,
         }
     }
 
     /// Handles in-game behavior for this action.
-    fn apply_to_game(
-        &self,
-        state: &mut GlobalState,
-        engine: &mut GameEngine,
-    ) -> Option<AppState> {
+    fn apply_to_game(&self, state: &mut GlobalState, engine: &mut GameEngine) -> Option<AppState> {
         match self {
             GameAction::Back => {
                 engine.audio_manager.stop();
@@ -578,9 +646,9 @@ impl GameAction {
                 } else {
                     *target = Some(*t);
                     *mode = match t {
-                        EditorTarget::Notes
-                        | EditorTarget::Receptors
-                        | EditorTarget::HitBar => EditMode::Resize,
+                        EditorTarget::Notes | EditorTarget::Receptors | EditorTarget::HitBar => {
+                            EditMode::Resize
+                        }
                         _ => EditMode::Move,
                     };
                 }

@@ -1,3 +1,9 @@
+//! Hit statistics and judgement types.
+//!
+//! This module defines the judgement system used for scoring,
+//! including accuracy calculation and hit statistics tracking.
+
+/// RGBA colors for each judgement type.
 #[derive(Clone)]
 pub struct JudgementColors {
     pub marv: [f32; 4],
@@ -10,30 +16,46 @@ pub struct JudgementColors {
 }
 
 impl JudgementColors {
+    /// Creates default judgement colors.
     pub fn new() -> Self {
         Self {
-            marv: [0.0, 1.0, 1.0, 1.0],
-            perfect: [1.0, 1.0, 0.0, 1.0],
-            great: [0.0, 1.0, 0.0, 1.0],
-            good: [0.0, 0.0, 0.5, 1.0],
-            bad: [1.0, 0.41, 0.71, 1.0],
-            miss: [1.0, 0.0, 0.0, 1.0],
-            ghost_tap: [0.5, 0.5, 0.5, 1.0],
+            marv: [0.0, 1.0, 1.0, 1.0],      // Cyan
+            perfect: [1.0, 1.0, 0.0, 1.0],   // Yellow
+            great: [0.0, 1.0, 0.0, 1.0],     // Green
+            good: [0.0, 0.0, 0.5, 1.0],      // Dark blue
+            bad: [1.0, 0.41, 0.71, 1.0],     // Pink
+            miss: [1.0, 0.0, 0.0, 1.0],      // Red
+            ghost_tap: [0.5, 0.5, 0.5, 1.0], // Gray
         }
     }
 }
 
+impl Default for JudgementColors {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Hit judgement types from best to worst.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Judgement {
+    /// Perfect timing (best).
     Marv,
+    /// Excellent timing.
     Perfect,
+    /// Good timing.
     Great,
+    /// Acceptable timing.
     Good,
+    /// Poor timing.
     Bad,
+    /// Missed note.
     Miss,
+    /// Key press without a note (not counted as miss).
     GhostTap,
 }
 
+/// Accumulated hit statistics for a play session.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct HitStats {
     pub marv: u32,
@@ -46,6 +68,7 @@ pub struct HitStats {
 }
 
 impl HitStats {
+    /// Creates empty hit statistics.
     pub fn new() -> Self {
         Self {
             marv: 0,
@@ -58,6 +81,14 @@ impl HitStats {
         }
     }
 
+    /// Calculates accuracy percentage (0-100).
+    ///
+    /// Uses a weighted formula:
+    /// - Marv/Perfect: 100% weight (6 points)
+    /// - Great: 66.7% weight (4 points)
+    /// - Good: 33.3% weight (2 points)
+    /// - Bad: 16.7% weight (1 point)
+    /// - Miss: 0% weight (0 points)
     pub fn calculate_accuracy(&self) -> f64 {
         let total =
             (self.marv + self.perfect + self.great + self.good + self.bad + self.miss) as f64;
@@ -72,5 +103,11 @@ impl HitStats {
             + self.bad as f64;
 
         (score / (total * 6.0)) * 100.0
+    }
+}
+
+impl Default for HitStats {
+    fn default() -> Self {
+        Self::new()
     }
 }

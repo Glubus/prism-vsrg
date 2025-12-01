@@ -9,5 +9,6 @@ pub use gameplay::{
     judgement::{JudgementFlash, JudgementPanel},
     nps::NpsDisplay,
     playfield::PlayfieldDisplay,
+    practice::PracticeOverlay,
     score::ScoreDisplay,
 };

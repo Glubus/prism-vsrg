@@ -1,3 +1,8 @@
+//! Playfield configuration and layout.
+
+#![allow(dead_code)]
+
+/// Configuration for the playfield layout.
 #[derive(Clone)]
 pub struct PlayfieldConfig {
     pub column_width_pixels: f32,

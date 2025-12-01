@@ -1,3 +1,7 @@
+//! Database manager handling background operations.
+
+#![allow(dead_code)]
+
 use crate::database::connection::Database;
 use crate::database::models::{BeatmapWithRatings, Beatmapset, Replay};
 use crate::database::query::{clear_all, get_all_beatmapsets};

@@ -1,3 +1,7 @@
+//! Inter-thread message types (legacy, kept for reference).
+
+#![allow(dead_code)]
+
 use crate::core::input::actions::KeyAction;
 use crate::shared::snapshot::RenderState;
 use std::path::PathBuf;

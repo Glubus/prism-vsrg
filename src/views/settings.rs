@@ -43,12 +43,11 @@ pub fn render_settings_window(
             let mut skins = vec!["default".to_string()];
             if let Ok(entries) = std::fs::read_dir("skins") {
                 for entry in entries.flatten() {
-                    if entry.path().is_dir() {
-                        if let Some(name) = entry.file_name().to_str() {
-                            if name != "default" {
-                                skins.push(name.to_string());
-                            }
-                        }
+                    if entry.path().is_dir()
+                        && let Some(name) = entry.file_name().to_str()
+                        && name != "default"
+                    {
+                        skins.push(name.to_string());
                     }
                 }
             }

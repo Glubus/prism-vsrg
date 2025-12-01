@@ -116,7 +116,7 @@ impl SongCard {
             }
 
             let artist_creator = if let Some(artist) = &beatmapset.artist {
-                format!("{}", artist)
+                artist.to_string()
             } else {
                 String::new()
             };

@@ -1,5 +1,10 @@
+//! Hit window timing configuration.
+
+#![allow(dead_code)]
+
 use crate::models::stats::Judgement;
 
+/// Hit window timing thresholds in milliseconds.
 #[derive(Debug, Clone, Copy)]
 pub struct HitWindow {
     pub marv_ms: f64,
@@ -11,7 +16,7 @@ pub struct HitWindow {
 }
 
 impl HitWindow {
-    /// Valeurs par défaut manuelles
+    /// Default hit window values.
     pub fn new() -> Self {
         Self {
             marv_ms: 16.0,

@@ -77,19 +77,18 @@ impl SongList {
                     }
                 }
 
-                if let Some(need_scroll_to) = self.need_scroll_to.take() {
-                    if need_scroll_to < beatmapsets.len() {
-                        let current_y =
-                            cumulative_heights.get(self.current).copied().unwrap_or(0.0);
-                        let target_y = cumulative_heights
-                            .get(need_scroll_to)
-                            .copied()
-                            .unwrap_or(0.0);
-                        let scroll_y = target_y - current_y;
-                        self.current = need_scroll_to;
-                        ui.scroll_with_delta(egui::Vec2::new(0.0, -1.0 * scroll_y));
-                        self.need_scroll_center = Some(need_scroll_to);
-                    }
+                if let Some(need_scroll_to) = self.need_scroll_to.take()
+                    && need_scroll_to < beatmapsets.len()
+                {
+                    let current_y = cumulative_heights.get(self.current).copied().unwrap_or(0.0);
+                    let target_y = cumulative_heights
+                        .get(need_scroll_to)
+                        .copied()
+                        .unwrap_or(0.0);
+                    let scroll_y = target_y - current_y;
+                    self.current = need_scroll_to;
+                    ui.scroll_with_delta(egui::Vec2::new(0.0, -scroll_y));
+                    self.need_scroll_center = Some(need_scroll_to);
                 }
 
                 let min_row = cumulative_heights
@@ -126,11 +125,11 @@ impl SongList {
 
                         let sense = response.interact(egui::Sense::click());
 
-                        if let Some(need_scroll_center) = self.need_scroll_center {
-                            if id == need_scroll_center {
-                                response.scroll_to_me(Some(Align::Center));
-                                let _ = self.need_scroll_center.take();
-                            }
+                        if let Some(need_scroll_center) = self.need_scroll_center
+                            && id == need_scroll_center
+                        {
+                            response.scroll_to_me(Some(Align::Center));
+                            let _ = self.need_scroll_center.take();
                         }
 
                         if sense.clicked() || sense.double_clicked() {

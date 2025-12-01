@@ -1,41 +1,60 @@
 //! Serializable replay structures and replay simulation engine.
+//!
+//! This module handles recording and playback of user inputs for replays,
+//! as well as deterministic simulation to recalculate scores.
 
-use crate::models::engine::hit_window::HitWindow;
+#![allow(dead_code)]
+
 use crate::models::engine::NoteData;
+use crate::models::engine::hit_window::HitWindow;
 use crate::models::settings::HitWindowMode;
 use crate::models::stats::{HitStats, Judgement};
 use serde::{Deserialize, Serialize};
 
-/// Version actuelle du format de replay.
+/// Current replay format version for compatibility.
 pub const REPLAY_FORMAT_VERSION: u8 = 2;
 
-/// Input utilisateur pur - press OU release.
+/// A single user input (press or release).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReplayInput {
-    /// Temps absolu en ms depuis le début de la map (après rate).
+    /// Absolute time in ms since map start (after rate applied).
     pub timestamp_ms: f64,
-    /// Index de colonne (0-based).
+    /// Column index (0-based).
     pub column: usize,
-    /// true = press, false = release.
+    /// `true` = press, `false` = release.
     pub is_press: bool,
 }
 
-/// Données de replay minimalistes - seulement les inputs purs.
+/// Minimal replay data containing only raw inputs.
+///
+/// This design allows replays to be re-simulated with different hit windows
+/// to see how scores would change with different judging parameters.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReplayData {
-    /// Version du format pour compatibilité future.
+    /// Format version for future compatibility.
     pub version: u8,
-    /// Tous les inputs utilisateur en ordre chronologique.
+    /// All user inputs in chronological order.
     pub inputs: Vec<ReplayInput>,
-    /// Rate appliqué pendant le jeu.
+    /// Playback rate used during the play.
     pub rate: f64,
-    /// Mode de hit window utilisé.
+    /// Hit window mode used.
     pub hit_window_mode: HitWindowMode,
-    /// Valeur du hit window (OD ou Judge level).
+    /// Hit window value (OD or judge level).
     pub hit_window_value: f64,
+    /// Whether practice mode was enabled (scores labeled differently).
+    #[serde(default)]
+    pub is_practice_mode: bool,
+    /// Checkpoints placed by the user (timestamps in ms).
+    /// Maximum 1 checkpoint every 15 seconds.
+    #[serde(default)]
+    pub checkpoints: Vec<f64>,
 }
 
+/// Minimum interval between checkpoints (in ms).
+pub const CHECKPOINT_MIN_INTERVAL_MS: f64 = 15000.0;
+
 impl ReplayData {
+    /// Creates a new replay data structure.
     pub fn new(rate: f64, hit_window_mode: HitWindowMode, hit_window_value: f64) -> Self {
         Self {
             version: REPLAY_FORMAT_VERSION,
@@ -43,10 +62,46 @@ impl ReplayData {
             rate,
             hit_window_mode,
             hit_window_value,
+            is_practice_mode: false,
+            checkpoints: Vec::new(),
         }
     }
 
-    /// Ajoute un input (press ou release).
+    /// Creates a new replay data structure in practice mode.
+    pub fn new_practice(rate: f64, hit_window_mode: HitWindowMode, hit_window_value: f64) -> Self {
+        let mut data = Self::new(rate, hit_window_mode, hit_window_value);
+        data.is_practice_mode = true;
+        data
+    }
+
+    /// Adds a checkpoint if the minimum interval is respected.
+    ///
+    /// Returns `true` if the checkpoint was successfully added.
+    pub fn add_checkpoint(&mut self, timestamp_ms: f64) -> bool {
+        // Check interval with last checkpoint
+        if let Some(&last) = self.checkpoints.last()
+            && timestamp_ms - last < CHECKPOINT_MIN_INTERVAL_MS
+        {
+            return false;
+        }
+        self.checkpoints.push(timestamp_ms);
+        true
+    }
+
+    /// Returns the last checkpoint timestamp, if any.
+    pub fn get_last_checkpoint(&self) -> Option<f64> {
+        self.checkpoints.last().copied()
+    }
+
+    /// Removes all inputs after the given timestamp.
+    ///
+    /// Used when retrying from a checkpoint.
+    pub fn truncate_inputs_after(&mut self, timestamp_ms: f64) {
+        self.inputs
+            .retain(|input| input.timestamp_ms < timestamp_ms);
+    }
+
+    /// Adds an input (press or release).
     pub fn add_input(&mut self, timestamp_ms: f64, column: usize, is_press: bool) {
         self.inputs.push(ReplayInput {
             timestamp_ms,
@@ -55,13 +110,13 @@ impl ReplayData {
         });
     }
 
-    /// Ajoute un press.
+    /// Adds a key press input.
     #[inline]
     pub fn add_press(&mut self, timestamp_ms: f64, column: usize) {
         self.add_input(timestamp_ms, column, true);
     }
 
-    /// Ajoute un release.
+    /// Adds a key release input.
     #[inline]
     pub fn add_release(&mut self, timestamp_ms: f64, column: usize) {
         self.add_input(timestamp_ms, column, false);
@@ -77,7 +132,7 @@ impl ReplayData {
         serde_json::from_str(json)
     }
 
-    /// Reconstruit le HitWindow à partir des paramètres sauvegardés.
+    /// Rebuilds the hit window from saved parameters.
     pub fn build_hit_window(&self) -> HitWindow {
         match self.hit_window_mode {
             HitWindowMode::OsuOD => HitWindow::from_osu_od(self.hit_window_value),
@@ -90,24 +145,30 @@ impl ReplayData {
 
 impl Default for ReplayData {
     fn default() -> Self {
-        Self::new(1.0, HitWindowMode::OsuOD, 5.0)
+        Self {
+            version: REPLAY_FORMAT_VERSION,
+            inputs: Vec::new(),
+            rate: 1.0,
+            hit_window_mode: HitWindowMode::OsuOD,
+            hit_window_value: 5.0,
+            is_practice_mode: false,
+            checkpoints: Vec::new(),
+        }
     }
 }
 
 impl ReplayData {
-    /// Crée un ReplayData vide (pour fallback/tests).
+    /// Creates an empty replay data (for fallback/tests).
     pub fn empty() -> Self {
         Self::default()
     }
 }
 
-/// Recalcule les stats à partir des hit_timings d'un ReplayResult.
-/// Utile pour rejuger un résultat déjà simulé avec un nouveau hit window
-/// SANS avoir accès à la chart originale (approximation).
-pub fn rejudge_hit_timings(
-    hit_timings: &[HitTiming],
-    hit_window: &HitWindow,
-) -> (HitStats, f64) {
+/// Recalculates stats from hit timings of a `ReplayResult`.
+///
+/// Useful for re-judging an already simulated result with a new hit window
+/// WITHOUT access to the original chart (approximation).
+pub fn rejudge_hit_timings(hit_timings: &[HitTiming], hit_window: &HitWindow) -> (HitStats, f64) {
     let mut stats = HitStats::new();
 
     for hit in hit_timings {
@@ -128,42 +189,42 @@ pub fn rejudge_hit_timings(
     (stats, accuracy)
 }
 
-/// Timing d'un hit individuel pour les graphes et l'analyse.
+/// Individual hit timing for graphs and analysis.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HitTiming {
-    /// Index de la note touchée.
+    /// Index of the hit note.
     pub note_index: usize,
-    /// Timing en ms (négatif = early, positif = late).
+    /// Timing offset in ms (negative = early, positive = late).
     pub timing_ms: f64,
-    /// Jugement attribué.
+    /// Assigned judgement.
     pub judgement: Judgement,
-    /// Timestamp de la note dans la map.
+    /// Timestamp of the note in the map.
     pub note_timestamp_ms: f64,
 }
 
-/// Ghost tap (press sans note correspondante).
+/// Ghost tap (press without a corresponding note).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GhostTap {
-    /// Timestamp du ghost tap.
+    /// Timestamp of the ghost tap.
     pub timestamp_ms: f64,
-    /// Colonne.
+    /// Column index.
     pub column: usize,
 }
 
-/// Résultat complet d'une simulation de replay.
+/// Complete result of a replay simulation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReplayResult {
-    /// Statistiques de hits.
+    /// Hit statistics.
     pub hit_stats: HitStats,
-    /// Précision calculée (0-100).
+    /// Calculated accuracy (0-100).
     pub accuracy: f64,
-    /// Score total.
+    /// Total score.
     pub score: u32,
-    /// Combo maximum atteint.
+    /// Maximum combo achieved.
     pub max_combo: u32,
-    /// Détails de chaque hit pour les graphes.
+    /// Hit timing details for graphs.
     pub hit_timings: Vec<HitTiming>,
-    /// Liste des ghost taps.
+    /// List of ghost taps.
     pub ghost_taps: Vec<GhostTap>,
 }
 
@@ -186,10 +247,10 @@ impl Default for ReplayResult {
     }
 }
 
-/// Simule un replay sur une chart avec un hit window donné.
+/// Simulates a replay on a chart with the given hit window.
 ///
-/// Cette fonction rejoue les inputs enregistrés sur la map pour
-/// recalculer toutes les statistiques de manière déterministe.
+/// This function replays recorded inputs on the map to deterministically
+/// recalculate all statistics.
 pub fn simulate_replay(
     replay_data: &ReplayData,
     chart: &[NoteData],
@@ -198,14 +259,14 @@ pub fn simulate_replay(
     let mut result = ReplayResult::new();
     let mut combo: u32 = 0;
 
-    // Tracker les notes touchées (index -> hit).
+    // Track hit notes (index -> hit)
     let mut note_hit: Vec<bool> = vec![false; chart.len()];
 
-    // Index de tête pour optimiser la recherche.
+    // Head index to optimize search
     let mut head_index: usize = 0;
 
     for input in &replay_data.inputs {
-        // Avant de traiter cet input, vérifier les notes manquées.
+        // Before processing this input, check for missed notes
         while head_index < chart.len() {
             if note_hit[head_index] {
                 head_index += 1;
@@ -234,12 +295,12 @@ pub fn simulate_replay(
             }
         }
 
-        // Traiter seulement les press (les release sont ignorés pour le scoring).
+        // Only process presses (releases are ignored for scoring)
         if !input.is_press {
             continue;
         }
 
-        // Chercher la meilleure note à frapper dans cette colonne.
+        // Find the best note to hit in this column
         let current_time = input.timestamp_ms;
         let mut best_match: Option<(usize, f64)> = None;
         let search_limit = current_time + hit_window.miss_ms;
@@ -253,22 +314,22 @@ pub fn simulate_replay(
 
             if note.column == input.column && !note_hit[i] {
                 let diff = (note.timestamp_ms - current_time).abs();
-                if diff <= hit_window.miss_ms {
-                    if best_match.is_none() || diff < best_match.unwrap().1 {
-                        best_match = Some((i, diff));
-                    }
+                if diff <= hit_window.miss_ms
+                    && best_match.is_none_or(|(_, best_diff)| diff < best_diff)
+                {
+                    best_match = Some((i, diff));
                 }
             }
         }
 
         if let Some((idx, _)) = best_match {
             let note = &chart[idx];
-            let diff = note.timestamp_ms - current_time; // Signé: négatif = early
+            let diff = note.timestamp_ms - current_time; // Signed: negative = early
             let (judgement, _) = hit_window.judge(diff);
 
             note_hit[idx] = true;
 
-            // Appliquer le jugement.
+            // Apply judgement
             match judgement {
                 Judgement::Miss => {
                     result.hit_stats.miss += 1;
@@ -287,12 +348,9 @@ pub fn simulate_replay(
                         _ => {}
                     }
                     combo += 1;
-                    if combo > result.max_combo {
-                        result.max_combo = combo;
-                    }
+                    result.max_combo = result.max_combo.max(combo);
                     result.score += match judgement {
-                        Judgement::Marv => 300,
-                        Judgement::Perfect => 300,
+                        Judgement::Marv | Judgement::Perfect => 300,
                         Judgement::Great => 200,
                         Judgement::Good => 100,
                         Judgement::Bad => 50,
@@ -308,7 +366,7 @@ pub fn simulate_replay(
                 note_timestamp_ms: note.timestamp_ms,
             });
         } else {
-            // Ghost tap - aucune note correspondante.
+            // Ghost tap - no corresponding note
             result.hit_stats.ghost_tap += 1;
             result.ghost_taps.push(GhostTap {
                 timestamp_ms: current_time,
@@ -317,7 +375,7 @@ pub fn simulate_replay(
         }
     }
 
-    // Après tous les inputs, vérifier les notes restantes non touchées (misses finaux).
+    // After all inputs, check remaining unhit notes (final misses)
     for (idx, note) in chart.iter().enumerate() {
         if !note_hit[idx] {
             result.hit_stats.miss += 1;
@@ -330,15 +388,15 @@ pub fn simulate_replay(
         }
     }
 
-    // Calculer l'accuracy finale.
+    // Calculate final accuracy
     result.accuracy = result.hit_stats.calculate_accuracy();
 
     result
 }
 
-/// Rejuge un replay avec un nouveau hit window.
+/// Re-judges a replay with a new hit window.
 ///
-/// Utile pour voir comment le score changerait avec des paramètres différents.
+/// Useful for seeing how the score would change with different parameters.
 pub fn rejudge_replay(
     replay_data: &ReplayData,
     chart: &[NoteData],

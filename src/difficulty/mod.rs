@@ -1,3 +1,7 @@
+//! Difficulty calculation module.
+
+#![allow(dead_code)]
+
 use minacalc_rs::{AllRates, Calc, HashMapCalcExt, OsuCalcExt};
 use rosu_map::Beatmap;
 use rosu_map::section::hit_objects::{HitObject, HitObjectKind};
@@ -71,12 +75,12 @@ where
     F: FnOnce(&Calc) -> Result<R, Box<dyn std::error::Error>>,
 {
     init_global_calc()?;
-    let calc_arc = GLOBAL_CALC.get().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::Other, "Global MinaCalc not initialized")
-    })?;
+    let calc_arc = GLOBAL_CALC
+        .get()
+        .ok_or_else(|| std::io::Error::other("Global MinaCalc not initialized"))?;
     let calc_guard = calc_arc
         .lock()
-        .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Calc lock poisoned"))?;
+        .map_err(|_| std::io::Error::other("Calc lock poisoned"))?;
     f(&calc_guard.0)
 }
 
@@ -164,10 +168,7 @@ fn analyze_with_calc(
     calc: &Calc,
 ) -> Result<DifficultyInfo, Box<dyn std::error::Error>> {
     if map.hit_objects.is_empty() {
-        return Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "No hit objects found",
-        )));
+        return Err(Box::new(std::io::Error::other("No hit objects found")));
     }
 
     let first = map.hit_objects.first().map(|h| h.start_time).unwrap_or(0.0);

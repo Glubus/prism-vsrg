@@ -6,6 +6,23 @@ aspect_ratio_mode = "Auto"
 current_skin = "default"
 
 [keybinds]
+6 = [
+    "KeyS",
+    "KeyD",
+    "KeyF",
+    "KeyJ",
+    "KeyK",
+    "KeyL",
+]
+7 = [
+    "KeyS",
+    "KeyD",
+    "KeyF",
+    "Space",
+    "KeyJ",
+    "KeyK",
+    "KeyL",
+]
 4 = [
     "KeyQ",
     "KeyW",
@@ -18,21 +35,4 @@ current_skin = "default"
     "Space",
     "KeyJ",
     "KeyK",
-]
-7 = [
-    "KeyS",
-    "KeyD",
-    "KeyF",
-    "Space",
-    "KeyJ",
-    "KeyK",
-    "KeyL",
-]
-6 = [
-    "KeyS",
-    "KeyD",
-    "KeyF",
-    "KeyJ",
-    "KeyK",
-    "KeyL",
 ]

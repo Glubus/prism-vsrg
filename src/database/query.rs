@@ -1,18 +1,21 @@
 //! Raw sqlx query helpers for the persistent database layer.
 
+#![allow(dead_code)]
+#![allow(clippy::too_many_arguments)]
+
 use crate::database::models::{Beatmap, BeatmapRating, BeatmapWithRatings, Beatmapset, Replay};
 use crate::models::search::MenuSearchFilters;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
 
 /// Clears beatmap tables (used during rescans).
-/// NOTE: Les replays ne sont PAS supprimés car ce sont des données utilisateur.
+///
+/// Note: Replays are NOT deleted as they are user data.
 pub async fn clear_all(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     sqlx::query("DELETE FROM beatmap_rating")
         .execute(pool)
         .await?;
-    // On ne supprime PAS les replays - ce sont des données utilisateur précieuses !
-    // sqlx::query("DELETE FROM replay").execute(pool).await?;
+    // Replays are preserved - they are valuable user data!
     sqlx::query("DELETE FROM beatmap").execute(pool).await?;
     sqlx::query("DELETE FROM beatmapset").execute(pool).await?;
     Ok(())

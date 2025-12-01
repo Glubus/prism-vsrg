@@ -1,6 +1,5 @@
 use crate::difficulty::BeatmapSsr;
 use rosu_map::Beatmap;
-use rosu_pp;
 use std::str::FromStr;
 
 pub fn calculate_difficulty(
@@ -11,13 +10,13 @@ pub fn calculate_difficulty(
     let map_str = osu_map
         .clone()
         .encode_to_string()
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
 
-    let map = rosu_pp::Beatmap::from_str(&map_str)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+    let map =
+        rosu_pp::Beatmap::from_str(&map_str).map_err(|e| std::io::Error::other(e.to_string()))?;
 
     let diff_attrs = rosu_pp::Difficulty::new().clock_rate(rate).calculate(&map);
-    let sr = diff_attrs.stars() as f64;
+    let sr = diff_attrs.stars();
 
     let weight = |value: f64| -> f64 {
         if etterna_ssr.overall > 0.0 {

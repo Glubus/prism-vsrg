@@ -1,5 +1,8 @@
 //! Utility to convert screen pixels into normalized coordinates.
 
+#![allow(dead_code)]
+
+/// Handles pixel-to-normalized coordinate conversion.
 #[derive(Clone)]
 pub struct PixelSystem {
     pub pixel_size: f32, // Derived from height (2.0 / height)

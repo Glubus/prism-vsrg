@@ -1,5 +1,7 @@
 //! Data structures mirroring the SQLite tables.
 
+#![allow(dead_code)]
+
 use sqlx::FromRow;
 
 #[derive(Debug, Clone, FromRow)]

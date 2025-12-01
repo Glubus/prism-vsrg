@@ -1,3 +1,7 @@
+//! Render resources (pipelines, buffers, bind groups).
+
+#![allow(dead_code)]
+
 use crate::models::engine::{InstanceRaw, NUM_COLUMNS, PixelSystem, PlayfieldConfig};
 use crate::models::settings::SettingsState;
 use crate::models::skin::{Skin, UIElementPos};
@@ -461,10 +465,10 @@ impl RenderResources {
     }
 
     pub fn load_background(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, path_str: &str) {
-        if let Some(current) = &self.current_background_path {
-            if current == path_str {
-                return;
-            }
+        if let Some(current) = &self.current_background_path
+            && current == path_str
+        {
+            return;
         }
 
         let path = std::path::Path::new(path_str);

@@ -21,10 +21,7 @@ pub fn calculate_difficulty(
         .or_else(|| hashmap.get(&rate_key_precision_one))
         .or_else(|| hashmap.get("1.0"))
         .ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("MinaCalc result missing for rate {}", rate),
-            )
+            std::io::Error::other(format!("MinaCalc result missing for rate {}", rate))
         })?;
 
     let ssr = BeatmapSsr {

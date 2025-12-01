@@ -73,10 +73,10 @@ impl GameState for ResultStateController {
                 }
             };
 
-            if let Ok(mut state) = self.menu_state.lock() {
-                if let Some(res) = &mut state.last_result {
-                    res.judge_text = settings_text;
-                }
+            if let Ok(mut state) = self.menu_state.lock()
+                && let Some(res) = &mut state.last_result
+            {
+                res.judge_text = settings_text;
             }
         });
     }

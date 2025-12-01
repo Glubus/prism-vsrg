@@ -34,11 +34,11 @@ impl BeatmapInfo {
                 ui.set_width(ui.available_rect_before_wrap().width());
 
                 // Highlight the difficulty name.
-                if let Some(bm) = beatmap {
-                    if let Some(diff_name) = &bm.beatmap.difficulty_name {
-                        ui.heading(RichText::new(diff_name).size(24.0));
-                        ui.add_space(10.0);
-                    }
+                if let Some(bm) = beatmap
+                    && let Some(diff_name) = &bm.beatmap.difficulty_name
+                {
+                    ui.heading(RichText::new(diff_name).size(24.0));
+                    ui.add_space(10.0);
                 }
 
                 // Placeholder for a future banner image.

@@ -4,4 +4,5 @@ pub mod hit_bar;
 pub mod judgement;
 pub mod nps;
 pub mod playfield;
+pub mod practice;
 pub mod score;

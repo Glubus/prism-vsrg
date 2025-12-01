@@ -57,7 +57,9 @@ impl PlayfieldDisplay {
             let progress = time_to_hit / scroll_speed_ms; // 0 = sur la ligne, 1 = en haut
 
             // Position Y (HitLine + Distance) - Garder f64 pour la précision jusqu'au cast final
-            let y_pos = (HIT_LINE_Y as f64 + y_offset_norm as f64 + (VISIBLE_DISTANCE as f64 * progress)) as f32;
+            let y_pos = (HIT_LINE_Y as f64
+                + y_offset_norm as f64
+                + (VISIBLE_DISTANCE as f64 * progress)) as f32;
 
             // Position X (Colonne)
             let col_offset = note.column as f32 * (column_width_norm + spacing_norm);

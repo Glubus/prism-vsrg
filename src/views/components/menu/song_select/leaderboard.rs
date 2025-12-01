@@ -1,7 +1,11 @@
-use crate::models::engine::hit_window::HitWindow;
+//! Leaderboard display component.
+
+#![allow(dead_code)]
+
 use crate::models::engine::NoteData;
+use crate::models::engine::hit_window::HitWindow;
 use crate::models::menu::GameResultData;
-use crate::models::replay::{simulate_replay, ReplayData, ReplayResult};
+use crate::models::replay::{ReplayData, ReplayResult, simulate_replay};
 use crate::models::stats::HitStats;
 use crate::views::components::menu::song_select::leaderboard_card::LeaderboardCard;
 use egui::{Color32, ScrollArea};
@@ -100,16 +104,36 @@ impl Leaderboard {
                         .show(ui, |ui| {
                             for (i, card) in self.scores.iter().take(10).enumerate() {
                                 // Utiliser le résultat simulé si disponible, sinon recalculer à la volée
-                                let (hit_stats, accuracy, replay_result) = if let Some(ref result) = card.cached_result {
-                                    (result.hit_stats.clone(), result.accuracy, result.clone())
-                                } else if let Some(chart) = chart {
-                                    // Simuler à la volée si on a la chart
-                                    let result = simulate_replay(&card.replay_data, chart, hit_window);
-                                    (result.hit_stats.clone(), result.accuracy, result)
-                                } else {
-                                    // Fallback: utiliser les données stockées
-                                    (HitStats::new(), card.accuracy, ReplayResult::new())
-                                };
+                                let (hit_stats, accuracy, max_combo, replay_result) =
+                                    if let Some(ref result) = card.cached_result {
+                                        (
+                                            result.hit_stats.clone(),
+                                            result.accuracy,
+                                            result.max_combo as i32,
+                                            result.clone(),
+                                        )
+                                    } else if let Some(chart) = chart {
+                                        // Simuler à la volée si on a la chart
+                                        let result =
+                                            simulate_replay(&card.replay_data, chart, hit_window);
+                                        (
+                                            result.hit_stats.clone(),
+                                            result.accuracy,
+                                            result.max_combo as i32,
+                                            result,
+                                        )
+                                    } else {
+                                        // Fallback: utiliser les données stockées
+                                        (
+                                            HitStats::new(),
+                                            card.accuracy,
+                                            card.max_combo,
+                                            ReplayResult::new(),
+                                        )
+                                    };
+
+                                // Détecte si c'est un score practice depuis le replay_data
+                                let is_practice = card.replay_data.is_practice_mode;
 
                                 let response = LeaderboardCard::render(
                                     ui,
@@ -117,11 +141,17 @@ impl Leaderboard {
                                     accuracy,
                                     card.rate,
                                     card.timestamp,
+                                    max_combo,
                                     &hit_stats,
+                                    is_practice,
                                 );
 
                                 if response.clicked() {
-                                    let judge_text = "Replay View".to_string();
+                                    let judge_text = if is_practice {
+                                        "Practice Replay".to_string()
+                                    } else {
+                                        "Replay View".to_string()
+                                    };
 
                                     clicked_result = Some(GameResultData {
                                         hit_stats: hit_stats.clone(),
@@ -129,7 +159,7 @@ impl Leaderboard {
                                         replay_result,
                                         score: card.score as u32,
                                         accuracy,
-                                        max_combo: card.max_combo as u32,
+                                        max_combo: max_combo as u32,
                                         beatmap_hash: Some(card.beatmap_hash.clone()),
                                         rate: card.rate,
                                         judge_text,
@@ -137,7 +167,7 @@ impl Leaderboard {
                                 }
 
                                 if i < self.scores.len().min(10).saturating_sub(1) {
-                                    ui.add_space(5.0);
+                                    ui.add_space(6.0);
                                 }
                             }
                         });

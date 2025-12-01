@@ -1,6 +1,11 @@
+//! Application window and event loop handler.
+//!
+//! This module manages the main window and bridges winit events to the
+//! game's internal event system.
+
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
-use winit::event::{KeyEvent, WindowEvent};
+use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::PhysicalKey;
 use winit::window::{Window, WindowId};
@@ -9,6 +14,7 @@ use crate::input::events::RawInputEvent;
 use crate::render::renderer::Renderer;
 use crate::system::bus::{SystemBus, SystemEvent};
 
+/// Main application struct handling window events.
 pub struct App {
     bus: SystemBus,
     window: Option<Arc<Window>>,
@@ -16,6 +22,7 @@ pub struct App {
 }
 
 impl App {
+    /// Creates a new application instance.
     pub fn new(bus: SystemBus) -> Self {
         Self {
             bus,
@@ -24,6 +31,7 @@ impl App {
         }
     }
 
+    /// Runs the application event loop (blocking).
     pub fn run(bus: SystemBus) {
         let event_loop = winit::event_loop::EventLoop::new().unwrap();
         event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
@@ -58,26 +66,25 @@ impl ApplicationHandler for App {
         _window_id: WindowId,
         event: WindowEvent,
     ) {
-        if let Some(renderer) = self.renderer.as_mut() {
-            if let Some(window) = self.window.as_ref() {
-                if renderer.handle_event(window, &event) {
-                    return;
-                }
-            }
+        if let Some(renderer) = self.renderer.as_mut()
+            && let Some(window) = self.window.as_ref()
+            && renderer.handle_event(window, &event)
+        {
+            return;
         }
 
         match event {
             WindowEvent::KeyboardInput {
                 event: key_event, ..
             } => {
-                if let PhysicalKey::Code(keycode) = key_event.physical_key {
-                    if !key_event.repeat {
-                        let raw_event = RawInputEvent {
-                            keycode,
-                            state: key_event.state,
-                        };
-                        let _ = self.bus.raw_input_tx.send(raw_event);
-                    }
+                if let PhysicalKey::Code(keycode) = key_event.physical_key
+                    && !key_event.repeat
+                {
+                    let raw_event = RawInputEvent {
+                        keycode,
+                        state: key_event.state,
+                    };
+                    let _ = self.bus.raw_input_tx.send(raw_event);
                 }
             }
             WindowEvent::CloseRequested => {
@@ -95,28 +102,39 @@ impl ApplicationHandler for App {
                 });
             }
             WindowEvent::RedrawRequested => {
-                if let Some(_window) = self.window.as_ref() {
-                    // Mise à jour de l'état depuis la logique
-                    if let Some(snapshot) = self.bus.render_rx.try_iter().last() {
-                        if let Some(renderer) = self.renderer.as_mut() {
-                            renderer.update_state(snapshot);
-                        }
+                if let Some(window) = self.window.as_ref() {
+                    // Update state from logic thread
+                    if let Some(snapshot) = self.bus.render_rx.try_iter().last()
+                        && let Some(renderer) = self.renderer.as_mut()
+                    {
+                        renderer.update_state(snapshot);
                     }
 
-                    // Rendu et envoi des actions UI (souris) vers la logique
+                    // Render and send UI actions (mouse) to logic
                     if let Some(renderer) = self.renderer.as_mut() {
-                        match renderer.render(_window) {
+                        match renderer.render(window) {
                             Ok(actions) => {
                                 for action in actions {
                                     let _ = self.bus.action_tx.send(action);
                                 }
                             }
-                            Err(wgpu::SurfaceError::Lost) => renderer.resize(_window.inner_size()),
-                            Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
-                            Err(e) => log::error!("Render error: {:?}", e),
+                            // Surface lost or outdated - reconfigure
+                            Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+                                renderer.resize(window.inner_size());
+                            }
+                            Err(wgpu::SurfaceError::OutOfMemory) => {
+                                log::error!("Render error: Out of memory!");
+                                event_loop.exit();
+                            }
+                            Err(wgpu::SurfaceError::Timeout) => {
+                                // Frame dropped, not critical - continue
+                                log::warn!("Render timeout - frame dropped");
+                            }
+                            #[allow(unreachable_patterns)]
+                            Err(e) => log::error!("Render error: {e:?}"),
                         }
                     }
-                    _window.request_redraw();
+                    window.request_redraw();
                 }
             }
             _ => {}

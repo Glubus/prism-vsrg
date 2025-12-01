@@ -1,4 +1,9 @@
 //! Runtime state machine orchestration for menus, gameplay, editor and result screens.
+//!
+//! Note: This module contains legacy state machine code kept for reference.
+//! The active state management is in `logic::state`.
+
+#![allow(dead_code)]
 
 mod editor;
 mod menu;
@@ -11,10 +16,8 @@ use crate::render::renderer::Renderer;
 use crate::shared::messages::MainToLogic;
 use std::sync::mpsc::Sender; // Channel to talk to the logic thread
 
-pub use editor::EditorStateController;
 pub use menu::MenuStateController;
 pub use play::PlayStateController;
-pub use result::ResultStateController;
 use winit::event::WindowEvent;
 
 pub enum StateTransition {
@@ -51,7 +54,7 @@ impl StateContext {
         F: FnOnce(&mut Renderer) -> R,
     {
         if let Some(ptr) = self.renderer {
-            unsafe { ptr.as_mut().map(|renderer| f(renderer)) }
+            unsafe { ptr.as_mut().map(f) }
         } else {
             None
         }
@@ -62,7 +65,7 @@ impl StateContext {
         F: FnOnce(&mut DbManager) -> R,
     {
         if let Some(ptr) = self.db_manager {
-            unsafe { ptr.as_mut().map(|db| f(db)) }
+            unsafe { ptr.as_mut().map(f) }
         } else {
             None
         }

@@ -1,3 +1,7 @@
+//! Core input action types (legacy, kept for reference).
+
+#![allow(dead_code)]
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum GameAction {
     Hit(usize),

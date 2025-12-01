@@ -64,18 +64,14 @@ impl GameState for MenuStateController {
         // La logique reçoit déjà les inputs via App.
         // Ici on gère UNIQUEMENT les transitions d'état locales (Main Thread).
 
-        if let Some(KeyAction::UI(action)) = action {
-            match action {
-                UIAction::Select => {
-                    if self.request_load_map(ctx, false) {
-                        // On passe en PlayState. Note : PlayState n'a plus de logique lourde.
-                        return StateTransition::Replace(Box::new(PlayStateController::new(
-                            Arc::clone(&self.menu_state),
-                        )));
-                    }
-                }
-                _ => {}
-            }
+        if let Some(KeyAction::UI(action)) = action
+            && action == UIAction::Select
+            && self.request_load_map(ctx, false)
+        {
+            // On passe en PlayState. Note : PlayState n'a plus de logique lourde.
+            return StateTransition::Replace(Box::new(PlayStateController::new(Arc::clone(
+                &self.menu_state,
+            ))));
         }
 
         // Le thread logique met à jour MenuState, le Renderer l'affiche.

@@ -1,5 +1,6 @@
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum RatingSource {
+    #[default]
     Etterna,
     Osu,
 }
@@ -13,14 +14,9 @@ impl RatingSource {
     }
 }
 
-impl Default for RatingSource {
-    fn default() -> Self {
-        RatingSource::Etterna
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum RatingMetric {
+    #[default]
     Overall,
     Stream,
     Jumpstream,
@@ -59,13 +55,7 @@ impl RatingMetric {
     }
 }
 
-impl Default for RatingMetric {
-    fn default() -> Self {
-        RatingMetric::Overall
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct MenuSearchFilters {
     pub query: String,
     pub min_rating: Option<f64>,
@@ -74,20 +64,6 @@ pub struct MenuSearchFilters {
     pub rating_metric: RatingMetric,
     pub min_duration_seconds: Option<f64>,
     pub max_duration_seconds: Option<f64>,
-}
-
-impl Default for MenuSearchFilters {
-    fn default() -> Self {
-        Self {
-            query: String::new(),
-            min_rating: None,
-            max_rating: None,
-            rating_source: RatingSource::default(),
-            rating_metric: RatingMetric::default(),
-            min_duration_seconds: None,
-            max_duration_seconds: None,
-        }
-    }
 }
 
 impl MenuSearchFilters {

@@ -1,3 +1,8 @@
+//! Song selection screen components.
+
+#![allow(dead_code)]
+#![allow(clippy::too_many_arguments)]
+
 pub(super) mod beatmap_info;
 pub(super) mod difficulty_card;
 pub(super) mod leaderboard;
@@ -14,7 +19,7 @@ use wgpu::TextureView;
 use winit::dpi::PhysicalSize;
 
 use crate::core::input::actions::UIAction;
-use crate::models::menu::{GameResultData, MenuState}; // Ajout de GameResultData
+use crate::models::menu::{GameResultData, MenuState};
 use crate::models::search::MenuSearchFilters;
 use crate::views::components::menu::song_select::beatmap_info::BeatmapInfo;
 use crate::views::components::menu::song_select::leaderboard::{Leaderboard, ScoreCard};
@@ -60,10 +65,10 @@ impl SongSelectScreen {
     }
 
     pub fn set_background(&mut self, image: DynamicImage, md5: Digest) {
-        if let Some(current_background) = &self.current_background_image {
-            if current_background.image_hash == md5 {
-                return;
-            }
+        if let Some(current_background) = &self.current_background_image
+            && current_background.image_hash == md5
+        {
+            return;
         }
         self.current_background_image = Some(CurrentBackground {
             image,
@@ -171,12 +176,15 @@ impl SongSelectScreen {
 
                             // Capture the leaderboard click result if any.
                             // Passer la chart cachée pour permettre le recalcul des replays.
-                            let cached_chart = menu_state.get_cached_chart()
-                                .map(|c| c.chart.as_slice());
-                            
-                            let clicked_result =
-                                self.leaderboard
-                                    .render(ui, diff_name.as_deref(), hit_window, cached_chart);
+                            let cached_chart =
+                                menu_state.get_cached_chart().map(|c| c.chart.as_slice());
+
+                            let clicked_result = self.leaderboard.render(
+                                ui,
+                                diff_name.as_deref(),
+                                hit_window,
+                                cached_chart,
+                            );
 
                             if let Some(result_data) = clicked_result {
                                 result_data_triggered = Some(result_data);

@@ -5,6 +5,5 @@ pub mod query;
 pub mod scanner;
 
 pub use connection::Database;
-pub use manager::{DbCommand, DbManager, DbState, DbStatus, SaveReplayCommand};
-pub use models::{Beatmap, BeatmapRating, BeatmapWithRatings, Beatmapset, Replay};
-pub use scanner::scan_songs_directory;
+pub use manager::{DbManager, DbStatus, SaveReplayCommand};
+pub use models::{BeatmapRating, BeatmapWithRatings, Beatmapset};

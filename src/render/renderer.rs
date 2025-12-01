@@ -1,6 +1,10 @@
+//! Main renderer orchestrating all graphics operations.
+
+#![allow(dead_code)]
+
 use crate::core::input::actions::UIAction;
 use crate::input::events::{EditMode, EditorTarget, GameAction};
-use crate::models::skin::UIElementPos; // Import nécessaire pour l'éditeur
+use crate::models::skin::UIElementPos;
 use crate::render::context::RenderContext;
 use crate::render::draw::draw_game;
 use crate::render::resources::RenderResources;
@@ -79,24 +83,22 @@ impl Renderer {
                 },
             ..
         } = event
+            && self.resources.settings.remapping_column.is_some()
         {
-            if self.resources.settings.remapping_column.is_some() {
-                let label = format!("{:?}", code);
-                self.resources.settings.push_keybind_key(label);
-            }
+            let label = format!("{:?}", code);
+            self.resources.settings.push_keybind_key(label);
         }
 
         handled
     }
 
     pub fn update_state(&mut self, new_state: RenderState) {
-        if let RenderState::Menu(ref menu) = new_state {
-            if let Some((set, _)) = menu.get_selected_beatmapset() {
-                if let Some(img_path) = &set.image_path {
-                    self.resources
-                        .load_background(&self.ctx.device, &self.ctx.queue, img_path);
-                }
-            }
+        if let RenderState::Menu(ref menu) = new_state
+            && let Some((set, _)) = menu.get_selected_beatmapset()
+            && let Some(img_path) = &set.image_path
+        {
+            self.resources
+                .load_background(&self.ctx.device, &self.ctx.queue, img_path);
         }
         self.current_state = new_state;
     }
@@ -255,7 +257,7 @@ impl Renderer {
             RenderState::Editor(snapshot) => {
                 // Capturer les événements de souris pour l'éditeur
                 let is_dragging = ctx_egui.input(|i| i.pointer.primary_down());
-                
+
                 if let (Some(target), true) = (snapshot.target, is_dragging) {
                     // Calculer le delta depuis la dernière position
                     // On utilise le delta de la souris depuis egui
@@ -263,7 +265,7 @@ impl Renderer {
                         let delta = i.pointer.delta();
                         (delta.x, delta.y)
                     });
-                    
+
                     if delta.0 != 0.0 || delta.1 != 0.0 {
                         // Envoyer l'action de modification
                         actions_to_send.push(GameAction::EditorModify {
@@ -272,7 +274,7 @@ impl Renderer {
                         });
                     }
                 }
-                
+
                 if let Some((target, mode, dx, dy)) = snapshot.modification {
                     let config = &mut self.resources.skin.config;
                     let speed = 2.0;
@@ -400,6 +402,23 @@ impl Renderer {
                 let hit_win = crate::models::engine::hit_window::HitWindow::new();
                 if self.result_screen.render(&ctx_egui, data, &hit_win) {
                     actions_to_send.push(GameAction::Back);
+                }
+            }
+
+            // Practice Mode overlay pendant le gameplay
+            RenderState::InGame(snapshot) => {
+                if snapshot.practice_mode {
+                    egui::Area::new(egui::Id::new("practice_overlay"))
+                        .fixed_pos(egui::pos2(0.0, 0.0))
+                        .show(&ctx_egui, |ui| {
+                            crate::views::components::PracticeOverlay::render(
+                                ui,
+                                snapshot.audio_time,
+                                snapshot.map_duration,
+                                &snapshot.checkpoints,
+                                self.ctx.config.width as f32,
+                            );
+                        });
                 }
             }
             _ => {}

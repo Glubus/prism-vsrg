@@ -1,4 +1,9 @@
-//! État du menu principal.
+//! Main menu state management.
+//!
+//! This module handles the song select menu state including beatmap selection,
+//! rate changes, difficulty caching, and leaderboard display.
+
+#![allow(dead_code)]
 
 use super::{ChartCache, RateCacheEntry};
 use crate::database::models::Replay;
@@ -11,7 +16,7 @@ use std::sync::{Arc, Mutex};
 
 use super::GameResultData;
 
-/// État principal du menu de sélection de chansons.
+/// Main state for the song selection menu.
 #[derive(Clone, Debug)]
 pub struct MenuState {
     pub beatmapsets: Vec<(Beatmapset, Vec<BeatmapWithRatings>)>,
@@ -58,7 +63,9 @@ impl MenuState {
         }
     }
 
-    /// Charge la chart de la map actuellement sélectionnée dans le cache.
+    /// Loads the currently selected beatmap's chart into cache.
+    ///
+    /// Returns `true` if a new chart was loaded, `false` if already cached.
     pub fn ensure_chart_cache(&mut self) -> bool {
         let selected = match self.get_selected_beatmap() {
             Some(bm) => bm,
@@ -68,10 +75,10 @@ impl MenuState {
         let beatmap_hash = selected.beatmap.hash.clone();
         let beatmap_path = PathBuf::from(&selected.beatmap.path);
 
-        if let Some(ref cache) = self.chart_cache {
-            if cache.beatmap_hash == beatmap_hash {
-                return false;
-            }
+        if let Some(ref cache) = self.chart_cache
+            && cache.beatmap_hash == beatmap_hash
+        {
+            return false;
         }
 
         match crate::models::engine::load_map_safe(&beatmap_path) {
@@ -102,7 +109,10 @@ impl MenuState {
     }
 
     pub fn get_cached_chart_note_count(&self) -> usize {
-        self.chart_cache.as_ref().map(|c| c.chart.len()).unwrap_or(0)
+        self.chart_cache
+            .as_ref()
+            .map(|c| c.chart.len())
+            .unwrap_or(0)
     }
 
     pub fn increase_rate(&mut self) {
@@ -182,12 +192,11 @@ impl MenuState {
                     return None;
                 }
             }
-        } else if let Some(entry) = self.rate_cache.get(&beatmap_hash) {
-            if !entry.contains_rate(self.rate) {
-                if let Some(rate) = entry.closest_rate(self.rate) {
-                    self.rate = rate;
-                }
-            }
+        } else if let Some(entry) = self.rate_cache.get(&beatmap_hash)
+            && !entry.contains_rate(self.rate)
+            && let Some(rate) = entry.closest_rate(self.rate)
+        {
+            self.rate = rate;
         }
 
         self.rate_cache.get(&beatmap_hash)
@@ -323,4 +332,3 @@ impl MenuState {
         self.leaderboard_scores = scores;
     }
 }
-

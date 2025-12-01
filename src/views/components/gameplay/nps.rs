@@ -25,12 +25,7 @@ impl NpsDisplay {
         self.text_size = size;
     }
 
-    pub fn render(
-        &mut self,
-        nps: f64,
-        screen_width: f32,
-        screen_height: f32,
-    ) -> Vec<Section<'_>> {
+    pub fn render(&mut self, nps: f64, screen_width: f32, screen_height: f32) -> Vec<Section<'_>> {
         let scale_ratio = screen_height / 1080.0;
         let font_scale = self.text_size * scale_ratio;
 
@@ -49,4 +44,3 @@ impl NpsDisplay {
         }]
     }
 }
-

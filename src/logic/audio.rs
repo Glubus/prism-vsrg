@@ -1,126 +1,97 @@
-use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
-use std::fs::File;
-use std::io::BufReader;
+//! Audio manager that sends commands to the dedicated audio thread.
+//!
+//! This module provides a thread-safe interface for controlling audio playback
+//! without blocking the main game loop.
+
+use crate::system::bus::{AudioCommand, SystemBus};
+use crossbeam_channel::Sender;
 use std::path::Path;
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
-};
-use std::time::Duration;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
+/// Wrapper for sending commands to the audio thread.
+///
+/// The `AudioManager` does not perform audio operations directly.
+/// Instead, it sends commands through a channel to a dedicated audio thread,
+/// ensuring non-blocking audio control from the game logic thread.
 pub struct AudioManager {
-    _stream: OutputStream,
-    stream_handle: OutputStreamHandle,
-    music_sink: Sink,
-
-    pub played_samples: Arc<AtomicUsize>,
-    pub sample_rate: u32,
-    pub channels: u16, // AJOUTÉ : Nécessaire pour le calcul du temps
+    cmd_tx: Sender<AudioCommand>,
+    position: Arc<AtomicU64>,
+    sample_rate: Arc<AtomicU64>,
+    channels: Arc<AtomicU64>,
+    current_speed: f32,
 }
 
 impl AudioManager {
-    pub fn new() -> Self {
-        let (_stream, stream_handle) = OutputStream::try_default().expect("No audio device found");
-        let music_sink = Sink::try_new(&stream_handle).expect("Failed to create sink");
-
+    /// Creates a new audio manager connected to the system bus.
+    pub fn new(bus: &SystemBus) -> Self {
         Self {
-            _stream,
-            stream_handle,
-            music_sink,
-            played_samples: Arc::new(AtomicUsize::new(0)),
-            sample_rate: 44100,
-            channels: 2, // Valeur par défaut standard
+            cmd_tx: bus.audio_cmd_tx.clone(),
+            position: bus.audio_position.clone(),
+            sample_rate: bus.audio_sample_rate.clone(),
+            channels: bus.audio_channels.clone(),
+            current_speed: 1.0,
         }
     }
 
+    /// Loads an audio file for playback.
     pub fn load_music(&mut self, path: &Path) {
-        if let Ok(file) = File::open(path) {
-            if let Ok(source) = Decoder::new(BufReader::new(file)) {
-                self.sample_rate = source.sample_rate();
-                self.channels = source.channels(); // On récupère le vrai nombre de canaux
-
-                self.played_samples.store(0, Ordering::Relaxed);
-
-                let monitor = AudioMonitor {
-                    inner: source,
-                    played_samples: self.played_samples.clone(),
-                };
-
-                if !self.music_sink.empty() {
-                    self.music_sink.stop();
-                }
-                self.music_sink.append(monitor);
-                self.music_sink.pause();
-            }
-        } else {
-            log::error!("Audio file not found: {:?}", path);
-        }
+        let _ = self.cmd_tx.send(AudioCommand::Load {
+            path: path.to_path_buf(),
+        });
     }
 
+    /// Starts audio playback.
     pub fn play(&self) {
-        self.music_sink.play();
+        let _ = self.cmd_tx.send(AudioCommand::Play);
     }
 
+    /// Pauses audio playback.
     pub fn pause(&self) {
-        self.music_sink.pause();
+        let _ = self.cmd_tx.send(AudioCommand::Pause);
     }
 
-    pub fn stop(&self) {
-        self.music_sink.stop();
+    /// Stops playback and resets position.
+    pub fn stop(&mut self) {
+        let _ = self.cmd_tx.send(AudioCommand::Stop);
     }
 
-    pub fn set_speed(&self, speed: f32) {
-        self.music_sink.set_speed(speed);
+    /// Sets the playback speed (rate).
+    pub fn set_speed(&mut self, speed: f32) {
+        self.current_speed = speed;
+        let _ = self.cmd_tx.send(AudioCommand::SetSpeed { speed });
     }
 
-    pub fn set_volume(&self, volume: f32) {
-        self.music_sink.set_volume(volume);
+    /// Sets the master volume (0.0 to 1.0).
+    pub fn set_volume(&mut self, volume: f32) {
+        let _ = self.cmd_tx.send(AudioCommand::SetVolume { volume });
     }
 
+    /// Seeks to a position in seconds.
+    ///
+    /// This operation is non-blocking; the audio thread handles the seek asynchronously.
+    pub fn seek(&mut self, position_seconds: f32) {
+        let _ = self.cmd_tx.send(AudioCommand::Seek {
+            position_secs: position_seconds,
+        });
+    }
+
+    /// Returns the current playback position in seconds.
+    ///
+    /// The position is calculated from the sample count shared atomically
+    /// with the audio thread.
     pub fn get_position_seconds(&self) -> f64 {
-        let samples = self.played_samples.load(Ordering::Relaxed) as f64;
-        let channels = self.channels.max(1) as f64; // Sécurité division par 0
+        let samples = self.position.load(Ordering::Relaxed) as f64;
+        let sample_rate = self.sample_rate.load(Ordering::Relaxed).max(1) as f64;
+        let channels = self.channels.load(Ordering::Relaxed).max(1) as f64;
 
-        // CORRECTION : On divise par le nombre de canaux !
-        // Ex: 88200 samples / (44100 Hz * 2 canaux) = 1 seconde.
-        samples / (self.sample_rate as f64 * channels)
+        samples / (sample_rate * channels)
     }
-}
 
-struct AudioMonitor<I> {
-    inner: I,
-    played_samples: Arc<AtomicUsize>,
-}
-
-impl<I> Iterator for AudioMonitor<I>
-where
-    I: Iterator,
-{
-    type Item = I::Item;
-    fn next(&mut self) -> Option<Self::Item> {
-        let item = self.inner.next();
-        if item.is_some() {
-            self.played_samples.fetch_add(1, Ordering::Relaxed);
-        }
-        item
-    }
-}
-
-impl<I> Source for AudioMonitor<I>
-where
-    I: Source,
-    I::Item: rodio::Sample,
-{
-    fn current_frame_len(&self) -> Option<usize> {
-        self.inner.current_frame_len()
-    }
-    fn channels(&self) -> u16 {
-        self.inner.channels()
-    }
-    fn sample_rate(&self) -> u32 {
-        self.inner.sample_rate()
-    }
-    fn total_duration(&self) -> Option<Duration> {
-        self.inner.total_duration()
+    /// Returns whether a seek operation is in progress.
+    ///
+    /// Currently always returns `false` as seeks are handled asynchronously.
+    pub fn is_seeking(&self) -> bool {
+        false
     }
 }

@@ -1,6 +1,6 @@
 //! Stats panel for the result screen (score, accuracy, judgement bars).
 use crate::models::menu::GameResultData;
-use egui::{Align2, Color32, FontId, Pos2, Rect, RichText, Rounding, Ui, Vec2};
+use egui::{Align2, Color32, FontId, Pos2, Rect, RichText, Ui, Vec2};
 
 pub fn render_stats(ui: &mut Ui, data: &GameResultData) {
     ui.vertical(|ui| {

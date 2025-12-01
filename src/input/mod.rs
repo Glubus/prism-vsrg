@@ -21,12 +21,11 @@ pub fn start_thread(bus: SystemBus, mut manager: InputManager) {
                     recv(bus.raw_input_rx) -> raw => {
                         match raw {
                             Ok(raw_event) => {
-                                if let Some(action) = manager.process(raw_event) {
-                                    if let Err(e) = bus.action_tx.send(action) {
+                                if let Some(action) = manager.process(raw_event)
+                                    && let Err(e) = bus.action_tx.send(action) {
                                         log::error!("INPUT: Failed to send action (Logic thread died?): {}", e);
                                         break;
                                     }
-                                }
                             }
                             Err(_) => break,
                         }

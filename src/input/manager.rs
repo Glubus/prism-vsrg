@@ -121,6 +121,14 @@ impl InputManager {
             .insert(KeyCode::KeyK, GameAction::Hit { column: 3 });
         self.bindings.insert(KeyCode::F5, GameAction::Restart);
 
+        // Practice Mode
+        self.bindings
+            .insert(KeyCode::F3, GameAction::LaunchPractice); // Menu: launch practice
+        self.bindings
+            .insert(KeyCode::BracketLeft, GameAction::PracticeCheckpoint); // In-game: checkpoint
+        self.bindings
+            .insert(KeyCode::BracketRight, GameAction::PracticeRetry); // In-game: retry
+
         // UI navigation (mirrored inside the editor).
         self.bindings
             .insert(KeyCode::ArrowUp, GameAction::Navigation { x: 0, y: -1 });

@@ -1,43 +1,67 @@
+//! User settings and configuration.
+//!
+//! This module handles loading/saving settings from `settings.toml`
+//! and provides the configuration UI state.
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 
+/// Hit window calculation mode.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum HitWindowMode {
+    /// osu! Overall Difficulty (OD) based timing.
     OsuOD,
+    /// Etterna/Quaver judge level based timing.
     EtternaJudge,
 }
 
+/// Aspect ratio mode for the playfield.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum AspectRatioMode {
+    /// Automatic based on window size.
     Auto,
+    /// Force 16:9 aspect ratio.
     Ratio16_9,
+    /// Force 4:3 aspect ratio.
     Ratio4_3,
 }
 
+/// Persistent user settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SettingsState {
+    /// Master volume (0.0 to 1.0).
     pub master_volume: f32,
+    /// Scroll speed in milliseconds.
     pub scroll_speed: f64,
+    /// Hit window calculation mode.
     pub hit_window_mode: HitWindowMode,
+    /// Hit window value (OD or judge level).
     pub hit_window_value: f64,
+    /// Aspect ratio mode.
     pub aspect_ratio_mode: AspectRatioMode,
+    /// Current skin name.
     pub current_skin: String,
 
-    // CORRECTION : Les clés TOML doivent être des Strings
+    /// Keybinds per key count (key = "4", "5", etc.).
     pub keybinds: HashMap<String, Vec<String>>,
 
+    /// Whether settings panel is open (UI state, not persisted).
     #[serde(skip)]
     pub is_open: bool,
+    /// Whether keybindings section is shown.
     #[serde(skip)]
     pub show_keybindings: bool,
+    /// Column count being remapped (if any).
     #[serde(skip)]
     pub remapping_column: Option<usize>,
+    /// Buffer for keys being captured during remapping.
     #[serde(skip)]
     pub remapping_buffer: Vec<String>,
 }
 
 impl SettingsState {
+    /// Creates default settings.
     pub fn new() -> Self {
         Self {
             master_volume: 0.5,
@@ -55,6 +79,7 @@ impl SettingsState {
         }
     }
 
+    /// Loads settings from `settings.toml`, or returns defaults if not found.
     pub fn load() -> Self {
         if let Ok(content) = fs::read_to_string("settings.toml") {
             if let Ok(mut settings) = toml::from_str::<SettingsState>(&content) {
@@ -67,38 +92,42 @@ impl SettingsState {
                     settings.keybinds = Self::default_keybinds();
                 }
                 return settings;
-            } else {
-                eprintln!("Failed to parse settings.toml, using defaults.");
             }
+            eprintln!("Failed to parse settings.toml, using defaults.");
         }
         Self::new()
     }
 
+    /// Saves settings to `settings.toml`.
     pub fn save(&self) {
         match toml::to_string_pretty(self) {
             Ok(content) => {
                 if let Err(e) = fs::write("settings.toml", content) {
-                    eprintln!("Failed to write settings.toml: {}", e);
+                    eprintln!("Failed to write settings.toml: {e}");
                 }
             }
-            Err(e) => eprintln!("Failed to serialize settings: {}", e),
+            Err(e) => eprintln!("Failed to serialize settings: {e}"),
         }
     }
 
+    /// Resets keybinds to defaults.
     pub fn reset_keybinds(&mut self) {
         self.keybinds = Self::default_keybinds();
     }
 
+    /// Begins capturing keybinds for a specific column count.
     pub fn begin_keybind_capture(&mut self, columns: usize) {
         self.remapping_column = Some(columns);
         self.remapping_buffer.clear();
     }
 
+    /// Cancels the current keybind capture.
     pub fn cancel_keybind_capture(&mut self) {
         self.remapping_column = None;
         self.remapping_buffer.clear();
     }
 
+    /// Adds a key to the capture buffer during remapping.
     pub fn push_keybind_key(&mut self, key_label: String) {
         let Some(target_columns) = self.remapping_column else {
             return;
@@ -117,6 +146,7 @@ impl SettingsState {
         }
     }
 
+    /// Returns the default keybinds for 4K, 5K, 6K, and 7K.
     fn default_keybinds() -> HashMap<String, Vec<String>> {
         let mut map = HashMap::new();
         map.insert(
@@ -162,5 +192,11 @@ impl SettingsState {
             ],
         );
         map
+    }
+}
+
+impl Default for SettingsState {
+    fn default() -> Self {
+        Self::new()
     }
 }

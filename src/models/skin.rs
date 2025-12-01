@@ -1,3 +1,7 @@
+//! Skin configuration and loading.
+
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -247,7 +251,7 @@ pub fn init_skin_structure() -> Result<(), String> {
     let skins_dir = Path::new("skins");
     let default_dir = skins_dir.join("default");
     if !skins_dir.exists() {
-        fs::create_dir_all(&skins_dir).map_err(|e| e.to_string())?;
+        fs::create_dir_all(skins_dir).map_err(|e| e.to_string())?;
     }
     if !default_dir.exists() {
         fs::create_dir_all(&default_dir).map_err(|e| e.to_string())?;

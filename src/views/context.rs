@@ -1,8 +1,12 @@
+//! Render context structures.
+
+#![allow(dead_code)]
+
 use crate::models::engine::PixelSystem;
 use wgpu::{BindGroup, Buffer, Device, Queue, RenderPipeline, TextureView};
 use wgpu_text::TextBrush;
 
-/// Regroupe toutes les ressources nécessaires pour dessiner une frame de jeu
+/// Contains all resources needed to render a game frame.
 pub struct GameplayRenderContext<'a> {
     pub device: &'a Device,
     pub queue: &'a Queue,
