@@ -31,6 +31,25 @@ pub struct CurrentBackground {
     pub image_hash: md5::Digest,
 }
 
+/// Textures for UI panel backgrounds
+pub struct UIPanelTextures {
+    pub beatmap_info_bg: Option<TextureId>,
+    pub search_panel_bg: Option<TextureId>,
+    pub search_bar: Option<TextureId>,
+    pub leaderboard_bg: Option<TextureId>,
+}
+
+impl Default for UIPanelTextures {
+    fn default() -> Self {
+        Self {
+            beatmap_info_bg: None,
+            search_panel_bg: None,
+            search_bar: None,
+            leaderboard_bg: None,
+        }
+    }
+}
+
 pub struct SongSelectScreen {
     song_list: SongList,
     leaderboard: Leaderboard,
@@ -115,6 +134,7 @@ impl SongSelectScreen {
         diff_sel_tex: Option<TextureId>,
         song_sel_color: Color32,
         diff_sel_color: Color32,
+        panel_textures: &UIPanelTextures,
     ) -> (
         Option<UIAction>,
         Option<GameResultData>,
@@ -170,6 +190,7 @@ impl SongSelectScreen {
                                     hit_window_mode,
                                     hit_window_value,
                                     rate_specific_ratings,
+                                    panel_textures.beatmap_info_bg,
                                 );
                                 ui.add_space(10.0);
                             }
@@ -200,7 +221,12 @@ impl SongSelectScreen {
                                 .vertical(|mut strip| {
                                     strip.cell(|ui| {
                                         ui.vertical(|ui| {
-                                            match self.search_panel.render(ui, menu_state) {
+                                            match self.search_panel.render(
+                                                ui,
+                                                menu_state,
+                                                panel_textures.search_panel_bg,
+                                                panel_textures.search_bar,
+                                            ) {
                                                 SearchPanelEvent::Apply(filters) => {
                                                     search_request = Some(filters);
                                                 }

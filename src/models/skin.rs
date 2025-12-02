@@ -40,6 +40,40 @@ pub struct SkinColors {
     pub miss: [f32; 4],
     #[serde(default = "default_gray")]
     pub ghost_tap: [f32; 4],
+
+    // UI Panel Colors
+    #[serde(default = "default_panel_bg")]
+    pub panel_background: [f32; 4],
+    #[serde(default = "default_panel_secondary")]
+    pub panel_secondary: [f32; 4],
+    #[serde(default = "default_panel_border")]
+    pub panel_border: [f32; 4],
+    #[serde(default = "default_accent")]
+    pub accent: [f32; 4],
+    #[serde(default = "default_accent_dim")]
+    pub accent_dim: [f32; 4],
+    #[serde(default = "default_text_primary")]
+    pub text_primary: [f32; 4],
+    #[serde(default = "default_text_secondary")]
+    pub text_secondary: [f32; 4],
+    #[serde(default = "default_text_muted")]
+    pub text_muted: [f32; 4],
+    #[serde(default = "default_rating_stream")]
+    pub rating_stream: [f32; 4],
+    #[serde(default = "default_rating_js")]
+    pub rating_jumpstream: [f32; 4],
+    #[serde(default = "default_rating_hs")]
+    pub rating_handstream: [f32; 4],
+    #[serde(default = "default_rating_stam")]
+    pub rating_stamina: [f32; 4],
+    #[serde(default = "default_rating_jack")]
+    pub rating_jackspeed: [f32; 4],
+    #[serde(default = "default_rating_cj")]
+    pub rating_chordjack: [f32; 4],
+    #[serde(default = "default_rating_tech")]
+    pub rating_technical: [f32; 4],
+    #[serde(default = "default_search_active")]
+    pub search_active_indicator: [f32; 4],
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -108,6 +142,11 @@ pub struct Skin {
     pub song_button_selected: Option<PathBuf>,
     pub difficulty_button: Option<PathBuf>,
     pub difficulty_button_selected: Option<PathBuf>,
+    // UI Panel custom images
+    pub beatmap_info_background: Option<PathBuf>,
+    pub search_panel_background: Option<PathBuf>,
+    pub search_bar: Option<PathBuf>,
+    pub leaderboard_background: Option<PathBuf>,
 }
 
 impl Skin {
@@ -142,6 +181,11 @@ impl Skin {
             song_button_selected: check_file(&base_path, "song_button_selected.png"),
             difficulty_button: check_file(&base_path, "difficulty_button.png"),
             difficulty_button_selected: check_file(&base_path, "difficulty_button_selected.png"),
+            // UI Panel custom images
+            beatmap_info_background: check_file(&base_path, "beatmap_info_bg.png"),
+            search_panel_background: check_file(&base_path, "search_panel_bg.png"),
+            search_bar: check_file(&base_path, "search_bar.png"),
+            leaderboard_background: check_file(&base_path, "leaderboard_bg.png"),
         })
     }
     pub fn save_user_config(&self) -> Result<(), String> {
@@ -237,6 +281,57 @@ fn default_red() -> [f32; 4] {
 fn default_gray() -> [f32; 4] {
     [0.5, 0.5, 0.5, 1.0]
 }
+
+// UI Panel default colors
+fn default_panel_bg() -> [f32; 4] {
+    [0.08, 0.08, 0.10, 0.95]
+}
+fn default_panel_secondary() -> [f32; 4] {
+    [0.12, 0.12, 0.15, 0.90]
+}
+fn default_panel_border() -> [f32; 4] {
+    [0.25, 0.25, 0.30, 0.80]
+}
+fn default_accent() -> [f32; 4] {
+    [0.40, 0.70, 1.0, 1.0]
+}
+fn default_accent_dim() -> [f32; 4] {
+    [0.25, 0.45, 0.70, 1.0]
+}
+fn default_text_primary() -> [f32; 4] {
+    [1.0, 1.0, 1.0, 1.0]
+}
+fn default_text_secondary() -> [f32; 4] {
+    [0.75, 0.75, 0.80, 1.0]
+}
+fn default_text_muted() -> [f32; 4] {
+    [0.50, 0.50, 0.55, 1.0]
+}
+fn default_rating_stream() -> [f32; 4] {
+    [0.30, 0.85, 0.50, 1.0]
+}
+fn default_rating_js() -> [f32; 4] {
+    [0.95, 0.75, 0.20, 1.0]
+}
+fn default_rating_hs() -> [f32; 4] {
+    [0.90, 0.45, 0.30, 1.0]
+}
+fn default_rating_stam() -> [f32; 4] {
+    [0.85, 0.30, 0.55, 1.0]
+}
+fn default_rating_jack() -> [f32; 4] {
+    [0.60, 0.40, 0.90, 1.0]
+}
+fn default_rating_cj() -> [f32; 4] {
+    [0.40, 0.60, 0.95, 1.0]
+}
+fn default_rating_tech() -> [f32; 4] {
+    [0.20, 0.80, 0.85, 1.0]
+}
+fn default_search_active() -> [f32; 4] {
+    [0.30, 0.75, 0.95, 1.0]
+}
+
 fn default_note_size() -> f32 {
     90.0
 }
