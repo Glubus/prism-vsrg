@@ -400,6 +400,8 @@ impl GameAction {
                             timestamp_ms: n.timestamp_ms,
                             column: n.column,
                             hit: false,
+                            is_hold: n.is_hold,
+                            hold_duration_ms: n.hold_duration_ms,
                         })
                         .collect();
 
@@ -455,6 +457,8 @@ impl GameAction {
                             timestamp_ms: n.timestamp_ms,
                             column: n.column,
                             hit: false,
+                            is_hold: n.is_hold,
+                            hold_duration_ms: n.hold_duration_ms,
                         })
                         .collect();
 
@@ -510,6 +514,8 @@ impl GameAction {
                             timestamp_ms: n.timestamp_ms,
                             column: n.column,
                             hit: false,
+                            is_hold: n.is_hold,
+                            hold_duration_ms: n.hold_duration_ms,
                         })
                         .collect();
 
