@@ -37,6 +37,12 @@ pub struct RenderResources {
     pub difficulty_button_texture: Option<egui::TextureHandle>,
     pub difficulty_button_selected_texture: Option<egui::TextureHandle>,
 
+    // UI Panel textures
+    pub beatmap_info_bg_texture: Option<egui::TextureHandle>,
+    pub search_panel_bg_texture: Option<egui::TextureHandle>,
+    pub search_bar_texture: Option<egui::TextureHandle>,
+    pub leaderboard_bg_texture: Option<egui::TextureHandle>,
+
     pub text_brush: wgpu_text::TextBrush,
     pub pixel_system: PixelSystem,
 
@@ -88,6 +94,15 @@ impl RenderResources {
         let difficulty_button_texture = load_egui_tex(skin.difficulty_button.clone(), "diff_btn");
         let difficulty_button_selected_texture =
             load_egui_tex(skin.difficulty_button_selected.clone(), "diff_btn_sel");
+
+        // Load UI panel textures
+        let beatmap_info_bg_texture =
+            load_egui_tex(skin.beatmap_info_background.clone(), "beatmap_info_bg");
+        let search_panel_bg_texture =
+            load_egui_tex(skin.search_panel_background.clone(), "search_panel_bg");
+        let search_bar_texture = load_egui_tex(skin.search_bar.clone(), "search_bar");
+        let leaderboard_bg_texture =
+            load_egui_tex(skin.leaderboard_background.clone(), "leaderboard_bg");
 
         let bind_group_layout = create_bind_group_layout(device);
         let render_pipeline = create_render_pipeline(device, &bind_group_layout, config.format);
@@ -344,6 +359,11 @@ impl RenderResources {
             song_button_selected_texture,
             difficulty_button_texture,
             difficulty_button_selected_texture,
+
+            beatmap_info_bg_texture,
+            search_panel_bg_texture,
+            search_bar_texture,
+            leaderboard_bg_texture,
 
             text_brush,
             pixel_system,

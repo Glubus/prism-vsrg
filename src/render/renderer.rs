@@ -198,7 +198,15 @@ impl Renderer {
                     }
                 };
 
-                let (action_opt, result_data, search_request) = self.song_select_screen.render(
+                // Build panel textures struct
+                let panel_textures = crate::views::components::menu::song_select::UIPanelTextures {
+                    beatmap_info_bg: self.resources.beatmap_info_bg_texture.as_ref().map(|t| t.id()),
+                    search_panel_bg: self.resources.search_panel_bg_texture.as_ref().map(|t| t.id()),
+                    search_bar: self.resources.search_bar_texture.as_ref().map(|t| t.id()),
+                    leaderboard_bg: self.resources.leaderboard_bg_texture.as_ref().map(|t| t.id()),
+                };
+
+                let (action_opt, result_data, search_request, _calculator_changed) = self.song_select_screen.render(
                     &ctx_egui,
                     menu_state,
                     &view,
@@ -222,7 +230,13 @@ impl Renderer {
                         .map(|t| t.id()),
                     to_egui(colors.selected_color),
                     to_egui(colors.difficulty_selected_color),
+                    &panel_textures,
                 );
+                
+                // Handle calculator change
+                if let Some(calc_id) = _calculator_changed {
+                    actions_to_send.push(GameAction::SetCalculator(calc_id));
+                }
 
                 if let Some(a) = action_opt {
                     match a {

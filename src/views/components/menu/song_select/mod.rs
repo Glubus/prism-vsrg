@@ -11,6 +11,9 @@ pub(super) mod search_panel;
 pub(super) mod song_card;
 pub(super) mod song_list;
 
+// Re-export CalculatorOption for use in MenuState
+pub use beatmap_info::CalculatorOption;
+
 use egui::{Color32, Direction, Label, RichText, TextureId};
 use egui_extras::{Size, StripBuilder};
 use image::DynamicImage;
@@ -29,6 +32,25 @@ use crate::views::components::menu::song_select::song_list::SongList;
 pub struct CurrentBackground {
     pub image: DynamicImage,
     pub image_hash: md5::Digest,
+}
+
+/// Textures for UI panel backgrounds
+pub struct UIPanelTextures {
+    pub beatmap_info_bg: Option<TextureId>,
+    pub search_panel_bg: Option<TextureId>,
+    pub search_bar: Option<TextureId>,
+    pub leaderboard_bg: Option<TextureId>,
+}
+
+impl Default for UIPanelTextures {
+    fn default() -> Self {
+        Self {
+            beatmap_info_bg: None,
+            search_panel_bg: None,
+            search_bar: None,
+            leaderboard_bg: None,
+        }
+    }
 }
 
 pub struct SongSelectScreen {
@@ -99,6 +121,7 @@ impl SongSelectScreen {
     pub fn on_resize(&mut self, _new_size: &PhysicalSize<u32>) {}
 
     // Signature extended to optionally bubble up GameResultData.
+    // Returns: (UIAction, GameResultData, SearchFilters, CalculatorChanged)
     pub fn render(
         &mut self,
         ctx: &egui::Context,
@@ -115,16 +138,19 @@ impl SongSelectScreen {
         diff_sel_tex: Option<TextureId>,
         song_sel_color: Color32,
         diff_sel_color: Color32,
+        panel_textures: &UIPanelTextures,
     ) -> (
         Option<UIAction>,
         Option<GameResultData>,
         Option<MenuSearchFilters>,
+        Option<String>, // Calculator changed
     ) {
         self.song_list.set_current(menu_state.selected_index);
 
         let mut action_triggered = None;
         let mut result_data_triggered = None;
         let mut search_request = None;
+        let mut calculator_changed = None;
 
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
@@ -162,7 +188,11 @@ impl SongSelectScreen {
                                 let rate_specific_ratings = beatmap.as_ref().and_then(|bm| {
                                     menu_state.get_cached_ratings_for(&bm.beatmap.hash, rate)
                                 });
-                                self.beatmap_info.render(
+                                
+                                // Get current difficulty from cache (for custom calculators)
+                                let current_ssr = menu_state.get_current_difficulty();
+                                
+                                if let Some(new_calc) = self.beatmap_info.render(
                                     ui,
                                     bs,
                                     beatmap.as_ref(),
@@ -170,7 +200,13 @@ impl SongSelectScreen {
                                     hit_window_mode,
                                     hit_window_value,
                                     rate_specific_ratings,
-                                );
+                                    panel_textures.beatmap_info_bg,
+                                    &menu_state.available_calculators,
+                                    &menu_state.active_calculator,
+                                    current_ssr,
+                                ) {
+                                    calculator_changed = Some(new_calc);
+                                }
                                 ui.add_space(10.0);
                             }
 
@@ -200,7 +236,12 @@ impl SongSelectScreen {
                                 .vertical(|mut strip| {
                                     strip.cell(|ui| {
                                         ui.vertical(|ui| {
-                                            match self.search_panel.render(ui, menu_state) {
+                                            match self.search_panel.render(
+                                                ui,
+                                                menu_state,
+                                                panel_textures.search_panel_bg,
+                                                panel_textures.search_bar,
+                                            ) {
                                                 SearchPanelEvent::Apply(filters) => {
                                                     search_request = Some(filters);
                                                 }
@@ -242,7 +283,7 @@ impl SongSelectScreen {
                     })
             });
 
-        (action_triggered, result_data_triggered, search_request)
+        (action_triggered, result_data_triggered, search_request, calculator_changed)
     }
 
     fn render_beatmap_footer(&mut self, ui: &mut egui::Ui, menu_state: &MenuState) {

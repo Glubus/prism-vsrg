@@ -18,3 +18,5 @@ pub struct GameResultData {
     pub rate: f64,
     pub judge_text: String,
 }
+
+
