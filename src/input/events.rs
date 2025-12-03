@@ -145,6 +145,10 @@ pub enum GameAction {
     // Result screen
     /// Navigate to result screen with data.
     SetResult(crate::models::menu::GameResultData),
+    
+    // Debug
+    /// Launch a debug map with all note types for testing.
+    LaunchDebugMap,
 }
 
 /// Commands sent to the input thread.

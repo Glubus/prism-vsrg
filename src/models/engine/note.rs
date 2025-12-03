@@ -3,13 +3,126 @@
 use rosu_map::section::hit_objects::{HitObject, HitObjectKind};
 use std::path::PathBuf;
 
+/// Type of note in a rhythm game chart.
+#[derive(Clone, Debug)]
+pub enum NoteType {
+    /// Simple tap note - press and release.
+    Tap,
+    
+    /// Hold/long note - press and hold for duration.
+    Hold {
+        duration_ms: f64,
+        /// When the player started holding (None if not started).
+        start_time: Option<f64>,
+        /// Whether currently being held.
+        is_held: bool,
+    },
+    
+    /// Mine/bomb - must NOT be pressed (penalty if hit).
+    Mine,
+    
+    /// Burst/mash note - must be pressed multiple times within duration.
+    Burst {
+        duration_ms: f64,
+        required_hits: u8,
+        /// How many times hit so far.
+        current_hits: u8,
+    },
+}
+
+impl NoteType {
+    /// Creates a new Hold with default state.
+    pub fn new_hold(duration_ms: f64) -> Self {
+        NoteType::Hold {
+            duration_ms,
+            start_time: None,
+            is_held: false,
+        }
+    }
+
+    /// Creates a new Burst with default state.
+    pub fn new_burst(duration_ms: f64, required_hits: u8) -> Self {
+        NoteType::Burst {
+            duration_ms,
+            required_hits,
+            current_hits: 0,
+        }
+    }
+
+    /// Returns true if this is a hold note.
+    pub fn is_hold(&self) -> bool {
+        matches!(self, NoteType::Hold { .. })
+    }
+
+    /// Returns true if this is a mine.
+    pub fn is_mine(&self) -> bool {
+        matches!(self, NoteType::Mine)
+    }
+
+    /// Returns true if this is a tap note.
+    pub fn is_tap(&self) -> bool {
+        matches!(self, NoteType::Tap)
+    }
+
+    /// Returns true if this is a burst/mash note.
+    pub fn is_burst(&self) -> bool {
+        matches!(self, NoteType::Burst { .. })
+    }
+
+    /// Returns the duration if this is a hold or burst, 0 otherwise.
+    pub fn duration(&self) -> f64 {
+        match self {
+            NoteType::Hold { duration_ms, .. } => *duration_ms,
+            NoteType::Burst { duration_ms, .. } => *duration_ms,
+            _ => 0.0,
+        }
+    }
+
+    /// Returns the required hits for burst notes, 1 for others.
+    pub fn required_hits(&self) -> u8 {
+        match self {
+            NoteType::Burst { required_hits, .. } => *required_hits,
+            NoteType::Mine => 0,
+            _ => 1,
+        }
+    }
+
+    /// Returns true if this note should be hit (not a mine).
+    pub fn should_hit(&self) -> bool {
+        !self.is_mine()
+    }
+
+    /// Returns true if this note has a duration (hold or burst).
+    pub fn has_duration(&self) -> bool {
+        matches!(self, NoteType::Hold { .. } | NoteType::Burst { .. })
+    }
+
+    /// Resets the runtime state (for new gameplay session).
+    pub fn reset(&mut self) {
+        match self {
+            NoteType::Hold { start_time, is_held, .. } => {
+                *start_time = None;
+                *is_held = false;
+            }
+            NoteType::Burst { current_hits, .. } => {
+                *current_hits = 0;
+            }
+            _ => {}
+        }
+    }
+}
+
+/// A single note in a rhythm game chart.
 #[derive(Clone, Debug)]
 pub struct NoteData {
+    /// When the note should be hit (in milliseconds).
     pub timestamp_ms: f64,
+    /// Which column/lane (0-indexed).
     pub column: usize,
+    /// Whether this note has been fully completed.
     pub hit: bool,
-    pub is_hold: bool,
-    pub hold_duration_ms: f64,
+    /// The type of note (tap, hold, mine, burst) with its state.
+    pub note_type: NoteType,
 }
 
 impl NoteData {
@@ -19,8 +132,7 @@ impl NoteData {
             timestamp_ms,
             column,
             hit: false,
-            is_hold: false,
-            hold_duration_ms: 0.0,
+            note_type: NoteType::Tap,
         }
     }
 
@@ -30,14 +142,83 @@ impl NoteData {
             timestamp_ms,
             column,
             hit: false,
-            is_hold: true,
-            hold_duration_ms: duration_ms,
+            note_type: NoteType::new_hold(duration_ms),
         }
     }
 
-    /// Returns the end time of this note (for holds, start + duration).
+    /// Creates a new mine note.
+    pub fn mine(timestamp_ms: f64, column: usize) -> Self {
+        Self {
+            timestamp_ms,
+            column,
+            hit: false,
+            note_type: NoteType::Mine,
+        }
+    }
+
+    /// Creates a burst/mash note.
+    pub fn burst(timestamp_ms: f64, column: usize, duration_ms: f64, required_hits: u8) -> Self {
+        Self {
+            timestamp_ms,
+            column,
+            hit: false,
+            note_type: NoteType::new_burst(duration_ms, required_hits),
+        }
+    }
+
+    /// Returns the end time of this note.
+    /// For holds/bursts: start + duration. For others: same as start.
     pub fn end_time_ms(&self) -> f64 {
-        self.timestamp_ms + self.hold_duration_ms
+        self.timestamp_ms + self.note_type.duration()
+    }
+
+    /// Returns true if this is a hold note.
+    pub fn is_hold(&self) -> bool {
+        self.note_type.is_hold()
+    }
+
+    /// Returns true if this is a mine.
+    pub fn is_mine(&self) -> bool {
+        self.note_type.is_mine()
+    }
+
+    /// Returns true if this is a tap note.
+    pub fn is_tap(&self) -> bool {
+        self.note_type.is_tap()
+    }
+
+    /// Returns true if this is a burst/mash note.
+    pub fn is_burst(&self) -> bool {
+        self.note_type.is_burst()
+    }
+
+    /// Returns the duration (for holds/bursts), 0 otherwise.
+    pub fn hold_duration_ms(&self) -> f64 {
+        self.note_type.duration()
+    }
+
+    /// Returns true if this note should be hit.
+    pub fn should_hit(&self) -> bool {
+        self.note_type.should_hit()
+    }
+
+    /// Returns the number of hits required for this note.
+    pub fn required_hits(&self) -> u8 {
+        self.note_type.required_hits()
+    }
+
+    /// Returns true if this note has a duration (hold or burst).
+    pub fn has_duration(&self) -> bool {
+        self.note_type.has_duration()
+    }
+
+    /// Creates a copy of this note with all runtime state reset.
+    /// Used when starting a new gameplay session from cached chart.
+    pub fn reset(&self) -> Self {
+        let mut note = self.clone();
+        note.hit = false;
+        note.note_type.reset();
+        note
     }
 }
 

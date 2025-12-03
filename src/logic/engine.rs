@@ -64,6 +64,8 @@ pub struct GameEngine {
     pub audio_manager: AudioManager,
     /// Smoothed audio clock in milliseconds.
     pub audio_clock: f64,
+    /// Whether audio is loaded (false for debug mode).
+    has_audio: bool,
 
     /// Playback rate multiplier.
     pub rate: f64,
@@ -155,10 +157,57 @@ impl GameEngine {
             last_hit_judgement: None,
             audio_manager,
             audio_clock: -Self::PRE_ROLL_MS,
+            has_audio: true,
             replay_data: ReplayData::new(rate, hit_window_mode, hit_window_value),
             beatmap_hash,
             started_audio: false,
             rate,
+            scroll_speed_ms: 500.0,
+            hit_window,
+            hit_window_mode,
+            hit_window_value,
+            input_timestamps: VecDeque::new(),
+            current_nps: 0.0,
+            // Practice Mode
+            practice_mode: false,
+            checkpoint_state: None,
+            last_checkpoint_time: f64::NEG_INFINITY,
+        }
+    }
+
+    /// Creates a `GameEngine` from a debug chart (no audio, for testing).
+    pub fn from_debug_chart(
+        bus: &SystemBus,
+        chart: Vec<NoteData>,
+        hit_window_mode: HitWindowMode,
+        hit_window_value: f64,
+    ) -> Self {
+        let audio_manager = AudioManager::new(bus);
+        // No audio loaded - we'll run in silent mode
+        
+        let hit_window = match hit_window_mode {
+            HitWindowMode::OsuOD => HitWindow::from_osu_od(hit_window_value),
+            HitWindowMode::EtternaJudge => HitWindow::from_etterna_judge(hit_window_value as u8),
+        };
+
+        Self {
+            chart,
+            head_index: 0,
+            score: 0,
+            combo: 0,
+            max_combo: 0,
+            hit_stats: HitStats::new(),
+            notes_passed: 0,
+            keys_held: vec![false; NUM_COLUMNS],
+            last_hit_timing: None,
+            last_hit_judgement: None,
+            audio_manager,
+            audio_clock: -Self::PRE_ROLL_MS,
+            has_audio: false, // Debug mode - no audio
+            replay_data: ReplayData::new(1.0, hit_window_mode, hit_window_value),
+            beatmap_hash: Some("debug_map".to_string()),
+            started_audio: true, // No audio, but consider it "started" for gameplay
+            rate: 1.0,
             scroll_speed_ms: 500.0,
             hit_window,
             hit_window_mode,
@@ -193,8 +242,8 @@ impl GameEngine {
         }
 
         // 2. Re-synchronize with the audio device if drifted
-        // Skip sync if audio is seeking (loading in background)
-        if !self.audio_manager.is_seeking() {
+        // Skip sync if audio is seeking (loading in background) or no audio (debug mode)
+        if self.has_audio && !self.audio_manager.is_seeking() {
             let raw_audio_time = self.audio_manager.get_position_seconds() * 1000.0;
             let drift = raw_audio_time - self.audio_clock;
 
@@ -207,31 +256,8 @@ impl GameEngine {
 
         let current_time = self.audio_clock;
 
-        // 3. Miss handling - check for notes past the hit window
-        let miss_threshold = self.hit_window.miss_ms;
-        let mut new_head = self.head_index;
-
-        while new_head < self.chart.len() {
-            // Skip already hit notes
-            if self.chart[new_head].hit {
-                new_head += 1;
-                continue;
-            }
-
-            let note_timestamp = self.chart[new_head].timestamp_ms;
-
-            if current_time > (note_timestamp + miss_threshold) {
-                // Note missed
-                self.chart[new_head].hit = true;
-                self.apply_judgement(Judgement::Miss);
-                // Note: Misses are not recorded in replay data.
-                // The simulation will recalculate them from pure inputs.
-                new_head += 1;
-            } else {
-                break;
-            }
-        }
-        self.head_index = new_head;
+        // 3. Note state updates and miss handling
+        self.update_notes(current_time);
 
         // 4. Update NPS tracking
         self.update_nps();
@@ -259,6 +285,9 @@ impl GameEngine {
 
                 // Record the raw RELEASE input in the replay
                 self.replay_data.add_release(self.audio_clock, column);
+                
+                // Check if releasing a hold note
+                self.process_release(column);
             }
             GameAction::TogglePause => { /* TODO */ }
             GameAction::PracticeCheckpoint => {
@@ -409,8 +438,10 @@ impl GameEngine {
     /// Processes a hit input on the given column.
     ///
     /// Finds the closest unhit note within the hit window and applies
-    /// the appropriate judgement. If no note is found, registers a ghost tap.
+    /// the appropriate judgement based on note type.
     fn process_hit(&mut self, column: usize) {
+        use crate::models::engine::note::NoteType;
+        
         let current_time = self.audio_clock;
         let mut best_note_idx = None;
         let mut min_diff = f64::MAX;
@@ -430,24 +461,200 @@ impl GameEngine {
             }
         }
 
-        // Apply judgement (mutable operations after borrow ends)
+        // Apply judgement based on note type
         if let Some(idx) = best_note_idx {
             let diff = self.chart[idx].timestamp_ms - current_time;
-            let (judgement, _) = self.hit_window.judge(diff);
-
-            self.chart[idx].hit = true;
-            self.last_hit_timing = Some(diff);
-            self.last_hit_judgement = Some(judgement);
-            self.apply_judgement(judgement);
-
-            // Note: Calculated hits are not recorded in replay.
-            // Only raw inputs are stored; simulation will recalculate.
+            
+            match &mut self.chart[idx].note_type {
+                NoteType::Tap => {
+                    let (judgement, _) = self.hit_window.judge(diff);
+                    self.chart[idx].hit = true;
+                    self.last_hit_timing = Some(diff);
+                    self.last_hit_judgement = Some(judgement);
+                    self.apply_judgement(judgement);
+                }
+                
+                NoteType::Hold { start_time, is_held, .. } => {
+                    // Start holding - judgement comes when hold is complete
+                    let (judgement, _) = self.hit_window.judge(diff);
+                    *start_time = Some(current_time);
+                    *is_held = true;
+                    self.last_hit_timing = Some(diff);
+                    self.last_hit_judgement = Some(judgement);
+                    // Don't mark as hit yet - wait for release/completion
+                }
+                
+                NoteType::Mine => {
+                    // Hit a mine = bad!
+                    self.chart[idx].hit = true;
+                    self.last_hit_timing = Some(diff);
+                    self.last_hit_judgement = Some(Judgement::Miss);
+                    self.apply_judgement(Judgement::Miss);
+                }
+                
+                NoteType::Burst { current_hits, required_hits, .. } => {
+                    // Increment hit count
+                    *current_hits += 1;
+                    if *current_hits >= *required_hits {
+                        // Burst complete!
+                        self.chart[idx].hit = true;
+                        let (judgement, _) = self.hit_window.judge(diff);
+                        self.last_hit_timing = Some(diff);
+                        self.last_hit_judgement = Some(judgement);
+                        self.apply_judgement(judgement);
+                    }
+                }
+            }
         } else {
             self.last_hit_timing = None;
             self.last_hit_judgement = Some(Judgement::GhostTap);
             self.apply_judgement(Judgement::GhostTap);
+        }
+    }
 
-            // Note: Ghost taps will also be recalculated by simulation.
+    /// Updates note states and handles misses for all note types.
+    fn update_notes(&mut self, current_time: f64) {
+        use crate::models::engine::NoteType;
+        
+        let miss_threshold = self.hit_window.miss_ms;
+        let mut new_head = self.head_index;
+        
+        // Collect judgements to apply (to avoid borrow conflicts)
+        let mut judgements: Vec<Judgement> = Vec::new();
+        let keys_held = self.keys_held.clone();
+
+        while new_head < self.chart.len() {
+            let note = &mut self.chart[new_head];
+            
+            // Skip already completed notes
+            if note.hit {
+                new_head += 1;
+                continue;
+            }
+
+            let note_timestamp = note.timestamp_ms;
+            let note_end_time = note.end_time_ms();
+
+            match &mut note.note_type {
+                NoteType::Tap => {
+                    if current_time > note_timestamp + miss_threshold {
+                        note.hit = true;
+                        judgements.push(Judgement::Miss);
+                        new_head += 1;
+                    } else {
+                        break;
+                    }
+                }
+                
+                NoteType::Hold { is_held, start_time, .. } => {
+                    if *is_held {
+                        // Check if hold completed (reached end time)
+                        if current_time >= note_end_time {
+                            note.hit = true;
+                            *is_held = false;
+                            judgements.push(Judgement::Marv);
+                            new_head += 1;
+                        }
+                        // Don't advance head_index while holding - note is still active!
+                        // Break to stop processing further notes
+                        break;
+                    } else if start_time.is_none() && current_time > note_timestamp + miss_threshold {
+                        // Never started holding - miss
+                        note.hit = true;
+                        judgements.push(Judgement::Miss);
+                        new_head += 1;
+                    } else {
+                        break;
+                    }
+                }
+                
+                NoteType::Mine => {
+                    if current_time > note_timestamp + miss_threshold {
+                        note.hit = true;
+                        // No judgement - mines that pass are good!
+                        new_head += 1;
+                    } else {
+                        break;
+                    }
+                }
+                
+                NoteType::Burst { duration_ms, required_hits, current_hits } => {
+                    if current_time > note_timestamp + *duration_ms {
+                        note.hit = true;
+                        if *current_hits < *required_hits {
+                            let ratio = *current_hits as f64 / *required_hits as f64;
+                            let judgement = if ratio >= 0.8 {
+                                Judgement::Great
+                            } else if ratio >= 0.5 {
+                                Judgement::Good
+                            } else if ratio > 0.0 {
+                                Judgement::Bad
+                            } else {
+                                Judgement::Miss
+                            };
+                            judgements.push(judgement);
+                        }
+                        new_head += 1;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        
+        self.head_index = new_head;
+        
+        // Apply collected judgements
+        for j in judgements {
+            self.apply_judgement(j);
+        }
+    }
+
+    /// Processes a release input on the given column (for hold notes).
+    fn process_release(&mut self, column: usize) {
+        use crate::models::engine::note::NoteType;
+        
+        let current_time = self.audio_clock;
+        
+        // Find active hold in this column
+        for note in self.chart.iter_mut().skip(self.head_index) {
+            if note.column != column || note.hit {
+                continue;
+            }
+            
+            if let NoteType::Hold { duration_ms, start_time: Some(start), is_held, .. } = &mut note.note_type {
+                if !*is_held {
+                    continue;
+                }
+                
+                let end_time = note.timestamp_ms + *duration_ms;
+                let hold_duration = current_time - *start;
+                let expected_duration = end_time - note.timestamp_ms;
+                
+                *is_held = false;
+                note.hit = true;
+                
+                // Calculate how well they held (percentage of required duration)
+                let hold_ratio = hold_duration / expected_duration;
+                
+                let judgement = if hold_ratio >= 0.9 {
+                    Judgement::Marv
+                } else if hold_ratio >= 0.8 {
+                    Judgement::Perfect
+                } else if hold_ratio >= 0.6 {
+                    Judgement::Great
+                } else if hold_ratio >= 0.4 {
+                    Judgement::Good
+                } else if hold_ratio >= 0.2 {
+                    Judgement::Bad
+                } else {
+                    Judgement::Miss
+                };
+                
+                self.last_hit_judgement = Some(judgement);
+                self.apply_judgement(judgement);
+                break;
+            }
         }
     }
 
@@ -520,12 +727,25 @@ impl GameEngine {
         let effective_speed = self.scroll_speed_ms * self.rate;
         let max_visible_time = self.audio_clock + effective_speed;
 
+        // For notes with duration (Hold/Burst), we need to keep them visible
+        // until their end time has passed, not just their start time
         let visible_notes: Vec<NoteData> = self
             .chart
             .iter()
             .skip(self.head_index)
             .take_while(|n| n.timestamp_ms <= max_visible_time + 2000.0)
-            .filter(|n| !n.hit)
+            .filter(|n| {
+                if n.hit {
+                    return false;
+                }
+                // For notes with duration, keep visible until end time passes
+                if n.note_type.has_duration() {
+                    // Keep visible if end hasn't passed yet
+                    n.end_time_ms() > self.audio_clock - 100.0
+                } else {
+                    true
+                }
+            })
             .cloned()
             .collect();
 

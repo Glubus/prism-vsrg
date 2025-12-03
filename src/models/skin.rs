@@ -147,6 +147,12 @@ pub struct Skin {
     pub search_panel_background: Option<PathBuf>,
     pub search_bar: Option<PathBuf>,
     pub leaderboard_background: Option<PathBuf>,
+    // Note type images
+    pub mine: Option<PathBuf>,
+    pub hold_body: Option<PathBuf>,
+    pub hold_end: Option<PathBuf>,
+    pub burst_body: Option<PathBuf>,
+    pub burst_end: Option<PathBuf>,
 }
 
 impl Skin {
@@ -186,6 +192,12 @@ impl Skin {
             search_panel_background: check_file(&base_path, "search_panel_bg.png"),
             search_bar: check_file(&base_path, "search_bar.png"),
             leaderboard_background: check_file(&base_path, "leaderboard_bg.png"),
+            // Note type images
+            mine: check_file(&base_path, "mine.png"),
+            hold_body: check_file(&base_path, "hold_body.png"),
+            hold_end: check_file(&base_path, "hold_end.png"),
+            burst_body: check_file(&base_path, "burst_body.png"),
+            burst_end: check_file(&base_path, "burst_end.png"),
         })
     }
     pub fn save_user_config(&self) -> Result<(), String> {
@@ -227,6 +239,32 @@ impl Skin {
             .map(|name| self.base_path.join(name))
             .or_else(|| check_file(&self.base_path, "note.png"))
     }
+    
+    /// Get mine image (falls back to note if not found)
+    pub fn get_mine_image(&self) -> Option<PathBuf> {
+        self.mine.clone().or_else(|| check_file(&self.base_path, "note.png"))
+    }
+    
+    /// Get hold body image (the middle part that stretches)
+    pub fn get_hold_body_image(&self) -> Option<PathBuf> {
+        self.hold_body.clone()
+    }
+    
+    /// Get hold end image (the cap at the end)
+    pub fn get_hold_end_image(&self) -> Option<PathBuf> {
+        self.hold_end.clone().or_else(|| check_file(&self.base_path, "note.png"))
+    }
+    
+    /// Get burst body image (the middle part that stretches)
+    pub fn get_burst_body_image(&self) -> Option<PathBuf> {
+        self.burst_body.clone()
+    }
+    
+    /// Get burst end image (the cap at the end)
+    pub fn get_burst_end_image(&self) -> Option<PathBuf> {
+        self.burst_end.clone().or_else(|| check_file(&self.base_path, "note.png"))
+    }
+    
     pub fn get_font_path(&self) -> Option<PathBuf> {
         self.general.font.as_ref().map(|f| self.base_path.join(f))
     }

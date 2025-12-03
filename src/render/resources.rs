@@ -27,6 +27,13 @@ pub struct RenderResources {
     pub note_bind_groups: Vec<wgpu::BindGroup>,
     pub receptor_bind_groups: Vec<wgpu::BindGroup>,
     pub receptor_pressed_bind_groups: Vec<wgpu::BindGroup>,
+    
+    // Special note type bind groups (shared across all columns)
+    pub mine_bind_group: Option<wgpu::BindGroup>,
+    pub hold_body_bind_group: Option<wgpu::BindGroup>,
+    pub hold_end_bind_group: Option<wgpu::BindGroup>,
+    pub burst_body_bind_group: Option<wgpu::BindGroup>,
+    pub burst_end_bind_group: Option<wgpu::BindGroup>,
 
     pub background_bind_group: Option<wgpu::BindGroup>,
     pub background_sampler: wgpu::Sampler,
@@ -316,6 +323,33 @@ impl RenderResources {
             }));
         }
 
+        // Load special note type textures
+        let create_bind_group_from_path = |path: Option<PathBuf>, label: &str| -> Option<wgpu::BindGroup> {
+            let p = path?;
+            let (tex, _, _) = load_texture_from_path(device, &ctx.queue, &p)?;
+            let view = tex.create_view(&Default::default());
+            Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some(label),
+                layout: &bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&sampler),
+                    },
+                ],
+            }))
+        };
+
+        let mine_bind_group = create_bind_group_from_path(skin.get_mine_image(), "Mine BG");
+        let hold_body_bind_group = create_bind_group_from_path(skin.get_hold_body_image(), "Hold Body BG");
+        let hold_end_bind_group = create_bind_group_from_path(skin.get_hold_end_image(), "Hold End BG");
+        let burst_body_bind_group = create_bind_group_from_path(skin.get_burst_body_image(), "Burst Body BG");
+        let burst_end_bind_group = create_bind_group_from_path(skin.get_burst_end_image(), "Burst End BG");
+
         let font_path = skin
             .get_font_path()
             .unwrap_or(PathBuf::from("assets/font.ttf"));
@@ -364,6 +398,13 @@ impl RenderResources {
             search_panel_bg_texture,
             search_bar_texture,
             leaderboard_bg_texture,
+            
+            // Special note type bind groups
+            mine_bind_group,
+            hold_body_bind_group,
+            hold_end_bind_group,
+            burst_body_bind_group,
+            burst_end_bind_group,
 
             text_brush,
             pixel_system,

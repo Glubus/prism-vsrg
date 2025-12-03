@@ -191,6 +191,11 @@ impl GlobalState {
         self.settings.save();
     }
 
+    /// Reloads settings from disk (to sync with renderer's changes).
+    fn reload_settings(&mut self) {
+        self.settings = SettingsState::load();
+    }
+
     /// Converts gameplay stats into a DB command for replay persistence.
     fn build_replay_payload(engine: &GameEngine, accuracy: f64) -> Option<SaveReplayCommand> {
         let hash = match engine.beatmap_hash.clone() {
@@ -390,20 +395,13 @@ impl GameAction {
                 None
             }
             GameAction::Confirm => {
+                // Reload settings from disk to get any changes from the settings panel
+                state.reload_settings();
+                
                 // Use cached chart if available, otherwise load from file
                 let engine = if let Some(cache) = menu.get_cached_chart() {
-                    // Reset hit notes for new gameplay
-                    let chart: Vec<_> = cache
-                        .chart
-                        .iter()
-                        .map(|n| crate::models::engine::NoteData {
-                            timestamp_ms: n.timestamp_ms,
-                            column: n.column,
-                            hit: false,
-                            is_hold: n.is_hold,
-                            hold_duration_ms: n.hold_duration_ms,
-                        })
-                        .collect();
+                    // Reset hit flags for new gameplay
+                    let chart: Vec<_> = cache.chart.iter().map(|n| n.reset()).collect();
 
                     // Use cache hash (guaranteed consistent with chart)
                     let beatmap_hash = Some(cache.beatmap_hash.clone());
@@ -448,19 +446,12 @@ impl GameAction {
                 Some(AppState::Game(engine))
             }
             GameAction::LaunchPractice => {
+                // Reload settings from disk
+                state.reload_settings();
+                
                 // Like Confirm, but enables Practice mode
                 let engine = if let Some(cache) = menu.get_cached_chart() {
-                    let chart: Vec<_> = cache
-                        .chart
-                        .iter()
-                        .map(|n| crate::models::engine::NoteData {
-                            timestamp_ms: n.timestamp_ms,
-                            column: n.column,
-                            hit: false,
-                            is_hold: n.is_hold,
-                            hold_duration_ms: n.hold_duration_ms,
-                        })
-                        .collect();
+                    let chart: Vec<_> = cache.chart.iter().map(|n| n.reset()).collect();
 
                     let beatmap_hash = Some(cache.beatmap_hash.clone());
 
@@ -505,19 +496,12 @@ impl GameAction {
                 Some(AppState::Game(engine))
             }
             GameAction::ToggleEditor => {
+                // Reload settings from disk
+                state.reload_settings();
+                
                 // Utiliser la chart cachée si disponible
                 let engine = if let Some(cache) = menu.get_cached_chart() {
-                    let chart: Vec<_> = cache
-                        .chart
-                        .iter()
-                        .map(|n| crate::models::engine::NoteData {
-                            timestamp_ms: n.timestamp_ms,
-                            column: n.column,
-                            hit: false,
-                            is_hold: n.is_hold,
-                            hold_duration_ms: n.hold_duration_ms,
-                        })
-                        .collect();
+                    let chart: Vec<_> = cache.chart.iter().map(|n| n.reset()).collect();
 
                     GameEngine::from_cached(
                         &state.bus,
@@ -591,6 +575,21 @@ impl GameAction {
                 None
             }
             GameAction::SetResult(result_data) => Some(AppState::Result(result_data.clone())),
+            GameAction::LaunchDebugMap => {
+                // Reload settings from disk
+                state.reload_settings();
+                
+                let chart = create_debug_chart();
+                let engine = GameEngine::from_debug_chart(
+                    &state.bus,
+                    chart,
+                    state.settings.hit_window_mode,
+                    state.settings.hit_window_value,
+                );
+                let mut engine = engine;
+                engine.scroll_speed_ms = state.settings.scroll_speed;
+                Some(AppState::Game(engine))
+            }
             GameAction::TogglePause
             | GameAction::Hit { .. }
             | GameAction::Release { .. }
@@ -729,4 +728,46 @@ impl GameAction {
             _ => None,
         }
     }
+}
+
+/// Creates a debug chart with all note types for testing rendering.
+fn create_debug_chart() -> Vec<crate::models::engine::NoteData> {
+    use crate::models::engine::NoteData;
+    
+    let mut notes = Vec::new();
+    let time = 1000.0; // Start at 1 second
+    let spacing = 500.0; // 500ms between note groups
+    
+    // Loop to create multiple sets of all note types
+    for iteration in 0..10 {
+        let base_time = time + (iteration as f64 * spacing * 8.0);
+        
+        // Tap notes (one per column)
+        for col in 0..4 {
+            notes.push(NoteData::tap(base_time + (col as f64 * 100.0), col));
+        }
+        
+        // Hold notes (long notes)
+        notes.push(NoteData::hold(base_time + spacing, 0, 800.0));
+        notes.push(NoteData::hold(base_time + spacing + 200.0, 2, 600.0));
+        
+        // Mines (avoid hitting these)
+        notes.push(NoteData::mine(base_time + spacing * 2.0, 1));
+        notes.push(NoteData::mine(base_time + spacing * 2.0 + 200.0, 3));
+        
+        // Burst notes (mash multiple times)
+        notes.push(NoteData::burst(base_time + spacing * 3.0, 0, 500.0, 3));
+        notes.push(NoteData::burst(base_time + spacing * 3.0 + 200.0, 2, 400.0, 4));
+        
+        // Mixed pattern
+        notes.push(NoteData::tap(base_time + spacing * 4.0, 1));
+        notes.push(NoteData::hold(base_time + spacing * 4.0, 3, 400.0));
+        notes.push(NoteData::mine(base_time + spacing * 4.5, 0));
+        notes.push(NoteData::burst(base_time + spacing * 5.0, 2, 300.0, 2));
+    }
+    
+    // Sort by timestamp
+    notes.sort_by(|a, b| a.timestamp_ms.partial_cmp(&b.timestamp_ms).unwrap());
+    
+    notes
 }

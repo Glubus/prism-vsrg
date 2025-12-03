@@ -21,6 +21,13 @@ pub struct GameplayRenderContext<'a> {
     pub note_bind_groups: &'a [BindGroup],
     pub receptor_bind_groups: &'a [BindGroup],
     pub receptor_pressed_bind_groups: &'a [BindGroup],
+    
+    // Special note type bind groups
+    pub mine_bind_group: Option<&'a BindGroup>,
+    pub hold_body_bind_group: Option<&'a BindGroup>,
+    pub hold_end_bind_group: Option<&'a BindGroup>,
+    pub burst_body_bind_group: Option<&'a BindGroup>,
+    pub burst_end_bind_group: Option<&'a BindGroup>,
 
     pub view: &'a TextureView,
     pub pixel_system: &'a PixelSystem,

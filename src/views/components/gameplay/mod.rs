@@ -6,3 +6,5 @@ pub mod nps;
 pub mod playfield;
 pub mod practice;
 pub mod score;
+
+pub use playfield::{NoteVisual, NoteInstance, PlayfieldDisplay};
