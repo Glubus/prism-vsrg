@@ -1,10 +1,6 @@
 //! Database connection helpers built on top of sqlx/SQLite.
 
-
-
-use crate::database::models::{
-    Beatmap, BeatmapRating, BeatmapWithRatings, Beatmapset, BeatmapsetLight,
-};
+use crate::database::models::{Beatmap, BeatmapRating, BeatmapWithRatings, Beatmapset};
 use crate::database::query;
 use crate::models::search::MenuSearchFilters;
 use sqlx::{SqlitePool, sqlite::SqliteConnectOptions};
@@ -189,16 +185,6 @@ impl Database {
         query::count_beatmapsets_filtered(&self.pool, filters).await
     }
 
-    /// Retrieves a page of beatmapsets (lightweight, no ratings).
-    pub async fn get_beatmapsets_page(
-        &self,
-        offset: usize,
-        limit: usize,
-        filters: &MenuSearchFilters,
-    ) -> Result<Vec<BeatmapsetLight>, sqlx::Error> {
-        query::get_beatmapsets_page(&self.pool, offset, limit, filters).await
-    }
-
     /// Retrieves a single beatmap by hash.
     pub async fn get_beatmap_by_hash(&self, hash: &str) -> Result<Option<Beatmap>, sqlx::Error> {
         query::get_beatmap_by_hash(&self.pool, hash).await
@@ -248,4 +234,3 @@ impl Database {
         query::get_top_scores(&self.pool, limit).await
     }
 }
-

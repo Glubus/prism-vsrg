@@ -1,11 +1,8 @@
 //! Raw sqlx query helpers for the persistent database layer.
 
-
 #![allow(clippy::too_many_arguments)]
 
-use crate::database::models::{
-    Beatmap, BeatmapLight, BeatmapRating, BeatmapWithRatings, Beatmapset, BeatmapsetLight, Replay,
-};
+use crate::database::models::{Beatmap, BeatmapRating, BeatmapWithRatings, Beatmapset, Replay};
 use crate::models::search::MenuSearchFilters;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
@@ -285,70 +282,6 @@ pub async fn count_beatmapsets_filtered(
     Ok(count.unwrap_or(0) as usize)
 }
 
-/// Retrieves a page of beatmapsets (lightweight, no ratings).
-pub async fn get_beatmapsets_page(
-    pool: &SqlitePool,
-    offset: usize,
-    limit: usize,
-    filters: &MenuSearchFilters,
-) -> Result<Vec<BeatmapsetLight>, sqlx::Error> {
-    let query_text = filters.query.to_lowercase();
-    let query_like = format!("%{}%", query_text);
-
-    let min_duration_active = filters.min_duration_seconds.is_some() as i32;
-    let min_duration_ms = filters
-        .min_duration_seconds
-        .map(|s| (s * 1000.0) as i32)
-        .unwrap_or(0);
-
-    let max_duration_active = filters.max_duration_seconds.is_some() as i32;
-    let max_duration_ms = filters
-        .max_duration_seconds
-        .map(|s| (s * 1000.0) as i32)
-        .unwrap_or(0);
-
-    let beatmapsets: Vec<Beatmapset> = sqlx::query_as(
-        r#"
-        SELECT DISTINCT bs.id, bs.path, bs.image_path, bs.artist, bs.title
-        FROM beatmapset bs
-        JOIN beatmap b ON b.beatmapset_id = bs.id
-        WHERE
-            (?1 = '' OR LOWER(bs.title) LIKE ?2 OR LOWER(bs.artist) LIKE ?2 OR LOWER(IFNULL(b.difficulty_name, '')) LIKE ?2)
-            AND (?3 = 0 OR b.duration_ms >= ?4)
-            AND (?5 = 0 OR b.duration_ms <= ?6)
-        ORDER BY bs.artist, bs.title
-        LIMIT ?7 OFFSET ?8
-        "#,
-    )
-    .bind(query_text.trim())
-    .bind(query_like)
-    .bind(min_duration_active)
-    .bind(min_duration_ms)
-    .bind(max_duration_active)
-    .bind(max_duration_ms)
-    .bind(limit as i64)
-    .bind(offset as i64)
-    .fetch_all(pool)
-    .await?;
-
-    let mut result = Vec::new();
-
-    for beatmapset in beatmapsets {
-        let beatmaps: Vec<Beatmap> = sqlx::query_as(
-            "SELECT hash, beatmapset_id, path, difficulty_name, note_count, duration_ms, nps FROM beatmap WHERE beatmapset_id = ?1 ORDER BY difficulty_name",
-        )
-        .bind(beatmapset.id)
-        .fetch_all(pool)
-        .await?;
-
-        let light_beatmaps: Vec<BeatmapLight> =
-            beatmaps.into_iter().map(BeatmapLight::from).collect();
-        result.push(BeatmapsetLight::new(beatmapset, light_beatmaps));
-    }
-
-    Ok(result)
-}
-
 /// Retrieves a single beatmap by hash.
 pub async fn get_beatmap_by_hash(
     pool: &SqlitePool,
@@ -509,4 +442,3 @@ pub async fn get_top_scores(pool: &SqlitePool, limit: i32) -> Result<Vec<Replay>
     .await?;
     Ok(replays)
 }
-
