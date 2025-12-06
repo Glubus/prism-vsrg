@@ -82,7 +82,8 @@ impl DbManager {
 
         let state_clone = Arc::clone(&state);
         let handle = thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
+            let rt = tokio::runtime::Runtime::new()
+                .expect("Failed to create tokio runtime for database thread");
             rt.block_on(Self::db_thread(state_clone, rx, db_path, songs_path));
         });
 

@@ -53,6 +53,21 @@ pub struct Skin {
     pub background: Option<PathBuf>,
 }
 
+impl Default for Skin {
+    fn default() -> Self {
+        Self {
+            base_path: PathBuf::from("skins/default"),
+            general: SkinGeneral::default(),
+            hud: HudConfig::default(),
+            gameplay: GameplayDefaults::default(),
+            menus: MenusConfig::default(),
+            editor: EditorConfig::default(),
+            key_modes: HashMap::new(),
+            background: None,
+        }
+    }
+}
+
 impl Skin {
     /// Load a skin from the skins directory
     pub fn load(skin_name: &str) -> Result<Self, String> {

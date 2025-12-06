@@ -270,8 +270,12 @@ impl RenderResources {
 
         let settings = SettingsState::load();
         let _ = crate::models::skin::init_skin_structure();
-        let mut skin =
-            Skin::load(&settings.current_skin).unwrap_or_else(|_| Skin::load("default").unwrap());
+        let mut skin = Skin::load(&settings.current_skin)
+            .or_else(|_| Skin::load("default"))
+            .unwrap_or_else(|e| {
+                log::error!("RESOURCES: Failed to load any skin: {}", e);
+                Skin::default()
+            });
         skin.load_key_mode(NUM_COLUMNS);
 
         let load_egui_tex = |path: Option<PathBuf>, name: &str| -> Option<egui::TextureHandle> {
