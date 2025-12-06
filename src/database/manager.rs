@@ -1,6 +1,6 @@
 //! Database manager handling background operations.
 
-#![allow(dead_code)]
+
 
 use crate::database::connection::Database;
 use crate::database::models::{BeatmapWithRatings, Beatmapset, Replay};
@@ -347,3 +347,4 @@ impl DbManager {
         let _ = self.send_command(DbCommand::FetchLeaderboard(beatmap_hash.to_string()));
     }
 }
+

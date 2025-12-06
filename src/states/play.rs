@@ -1,7 +1,7 @@
 use super::{GameState, StateContext, StateTransition};
-use crate::core::input::actions::{KeyAction, UIAction};
+use crate::input::events::GameAction;
 use crate::models::menu::MenuState;
-use crate::shared::messages::MainToLogic; // Hook into logic thread signaling
+use crate::shared::messages::MainToLogic;
 use std::sync::{Arc, Mutex};
 use winit::event::WindowEvent;
 
@@ -26,15 +26,15 @@ impl GameState for PlayStateController {
     fn handle_input(
         &mut self,
         _event: &WindowEvent,
-        action: Option<KeyAction>,
+        action: Option<GameAction>,
         ctx: &mut StateContext,
     ) -> StateTransition {
         // Gameplay inputs (Hit, etc.) go straight to the logic thread via App.
         // This layer only cares about forced exits (Escape).
 
-        if let Some(KeyAction::UI(UIAction::Back)) = action {
+        if let Some(GameAction::Back) = action {
             // Ask the logic thread to stop the engine.
-            ctx.send_to_logic(MainToLogic::Input(KeyAction::UI(UIAction::Back)));
+            ctx.send_to_logic(MainToLogic::Input(GameAction::Back));
 
             // Move back to the menu (the visual state will follow the snapshot).
             // App handles transitions when logic sends TransitionToMenu, but we can

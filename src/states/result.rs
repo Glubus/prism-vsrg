@@ -1,5 +1,5 @@
 use super::{GameState, MenuStateController, StateContext, StateTransition};
-use crate::core::input::actions::{KeyAction, UIAction};
+use crate::input::events::GameAction;
 use crate::models::menu::{GameResultData, MenuState};
 use crate::models::replay::{ReplayData, ReplayResult};
 use crate::models::stats::HitStats;
@@ -109,13 +109,13 @@ impl GameState for ResultStateController {
     fn handle_input(
         &mut self,
         _event: &WindowEvent,
-        action: Option<KeyAction>,
+        action: Option<GameAction>,
         _ctx: &mut StateContext,
     ) -> StateTransition {
-        if let Some(KeyAction::UI(ui_action)) = action {
-            match ui_action {
+        if let Some(game_action) = action {
+            match game_action {
                 // Either Select (Enter) or Back (Esc) exits this screen.
-                UIAction::Select | UIAction::Back => {
+                GameAction::Confirm | GameAction::Back => {
                     return StateTransition::Replace(Box::new(MenuStateController::new(
                         Arc::clone(&self.menu_state),
                     )));

@@ -193,3 +193,4 @@ impl DifficultyCalculator for EtternaCalculator {
         ])
     }
 }
+

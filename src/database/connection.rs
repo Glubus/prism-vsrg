@@ -1,9 +1,9 @@
 //! Database connection helpers built on top of sqlx/SQLite.
 
-#![allow(dead_code)]
+
 
 use crate::database::models::{
-    Beatmap, BeatmapLight, BeatmapRating, BeatmapWithRatings, Beatmapset, BeatmapsetLight,
+    Beatmap, BeatmapRating, BeatmapWithRatings, Beatmapset, BeatmapsetLight,
 };
 use crate::database::query;
 use crate::models::search::MenuSearchFilters;
@@ -248,3 +248,4 @@ impl Database {
         query::get_top_scores(&self.pool, limit).await
     }
 }
+

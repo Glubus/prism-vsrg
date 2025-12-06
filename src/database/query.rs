@@ -1,6 +1,6 @@
 //! Raw sqlx query helpers for the persistent database layer.
 
-#![allow(dead_code)]
+
 #![allow(clippy::too_many_arguments)]
 
 use crate::database::models::{
@@ -509,3 +509,4 @@ pub async fn get_top_scores(pool: &SqlitePool, limit: i32) -> Result<Vec<Replay>
     .await?;
     Ok(replays)
 }
+

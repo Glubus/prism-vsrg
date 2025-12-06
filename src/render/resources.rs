@@ -1,15 +1,14 @@
 //! Render resources (pipelines, buffers, bind groups).
 
-#![allow(dead_code)]
+
 
 use crate::models::engine::{InstanceRaw, NUM_COLUMNS, PixelSystem, PlayfieldConfig};
 use crate::models::settings::SettingsState;
 use crate::models::skin::Skin;
 use crate::render::context::RenderContext;
 use crate::render::utils::*;
-use crate::render::utils::*;
 use crate::shaders::constants::{BACKGROUND_SHADER_SRC, PROGRESS_SHADER_SRC, QUAD_SHADER_SRC};
-use crate::views::components::common::primitives::{ProgressInstance, QuadInstance}; // From primitives
+use crate::views::components::common::primitives::ProgressInstance; // From primitives
 use crate::views::components::{
     AccuracyDisplay, ComboDisplay, HitBarDisplay, JudgementFlash, JudgementPanel,
     NotesRemainingDisplay, NpsDisplay, PlayfieldDisplay, ScoreDisplay, ScrollSpeedDisplay,
@@ -881,3 +880,4 @@ impl RenderResources {
         }
     }
 }
+

@@ -157,3 +157,4 @@ pub trait DifficultyCalculator: Send + Sync + Debug {
         format!("{}_{}", self.id(), self.version())
     }
 }
+

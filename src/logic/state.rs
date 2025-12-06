@@ -867,3 +867,4 @@ fn create_debug_chart() -> Vec<crate::models::engine::NoteData> {
 
     notes
 }
+

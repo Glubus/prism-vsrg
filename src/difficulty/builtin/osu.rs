@@ -114,3 +114,4 @@ impl DifficultyCalculator for OsuCalculator {
         true
     }
 }
+

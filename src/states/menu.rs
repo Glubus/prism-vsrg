@@ -1,7 +1,7 @@
 use super::{GameState, PlayStateController, StateContext, StateTransition};
-use crate::core::input::actions::{KeyAction, UIAction};
+use crate::input::events::GameAction;
 use crate::models::menu::MenuState;
-use crate::shared::messages::MainToLogic; // NOUVEAU
+use crate::shared::messages::MainToLogic;
 use std::sync::{Arc, Mutex};
 use winit::event::WindowEvent;
 
@@ -58,20 +58,19 @@ impl GameState for MenuStateController {
     fn handle_input(
         &mut self,
         _event: &WindowEvent,
-        action: Option<KeyAction>,
+        action: Option<GameAction>,
         ctx: &mut StateContext,
     ) -> StateTransition {
         // La logique reçoit déjà les inputs via App.
         // Ici on gère UNIQUEMENT les transitions d'état locales (Main Thread).
 
-        if let Some(KeyAction::UI(action)) = action
-            && action == UIAction::Select
-            && self.request_load_map(ctx, false)
-        {
-            // On passe en PlayState. Note : PlayState n'a plus de logique lourde.
-            return StateTransition::Replace(Box::new(PlayStateController::new(Arc::clone(
-                &self.menu_state,
-            ))));
+        if let Some(GameAction::Confirm) = action {
+            if self.request_load_map(ctx, false) {
+                // On passe en PlayState. Note : PlayState n'a plus de logique lourde.
+                return StateTransition::Replace(Box::new(PlayStateController::new(Arc::clone(
+                    &self.menu_state,
+                ))));
+            }
         }
 
         // Le thread logique met à jour MenuState, le Renderer l'affiche.

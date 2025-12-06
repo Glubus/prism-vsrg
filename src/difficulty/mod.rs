@@ -7,7 +7,7 @@
 //! Difficulty is calculated on-demand when a beatmap is selected,
 //! rather than during the initial scan. This dramatically improves scan speed.
 
-#![allow(dead_code)]
+
 
 pub mod builtin;
 pub mod calculator;
@@ -286,3 +286,4 @@ pub fn calculate_all_calculators(
         BeatmapRatingValue::new("osu", osu_ssr),
     ])
 }
+

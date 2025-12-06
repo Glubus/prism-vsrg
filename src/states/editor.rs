@@ -1,5 +1,5 @@
 use super::{GameState, MenuStateController, StateContext, StateTransition};
-use crate::core::input::actions::{GameAction, KeyAction, UIAction}; // Ajout de GameAction
+use crate::input::events::GameAction;
 use crate::models::menu::MenuState;
 use crate::shared::messages::MainToLogic;
 use std::sync::{Arc, Mutex};
@@ -42,7 +42,7 @@ impl GameState for EditorStateController {
     fn handle_input(
         &mut self,
         _event: &WindowEvent,
-        action: Option<KeyAction>,
+        action: Option<GameAction>,
         ctx: &mut StateContext,
     ) -> StateTransition {
         // La plupart des inputs (clics, drag, texte) sont capturés par Egui dans le Renderer.
@@ -51,7 +51,7 @@ impl GameState for EditorStateController {
         if let Some(key_action) = action {
             match key_action {
                 // Echap ou Retour pour quitter l'éditeur
-                KeyAction::UI(UIAction::Back) => {
+                GameAction::Back => {
                     // 1. On nettoie l'interface côté Renderer (optionnel, mais propre)
                     ctx.with_renderer(|_r| {
                         // On pourrait reset des états visuels ici si nécessaire
@@ -59,7 +59,7 @@ impl GameState for EditorStateController {
 
                     // 2. On signale au thread Logic de quitter l'état Éditeur
                     // (Le thread Logic va alors renvoyer un StateUpdate avec RenderState::Menu)
-                    ctx.send_to_logic(MainToLogic::Input(KeyAction::UI(UIAction::Back)));
+                    ctx.send_to_logic(MainToLogic::Input(GameAction::Back));
 
                     // 3. Transition immédiate côté Main Thread pour réactivité
                     return StateTransition::Replace(Box::new(MenuStateController::new(
@@ -69,9 +69,9 @@ impl GameState for EditorStateController {
 
                 // On gère aussi la bascule directe via la touche d'éditeur (ex: F2 ou E)
                 // Si on appuie dessus alors qu'on y est déjà -> on sort
-                KeyAction::Game(GameAction::ToggleEditor) => {
+                GameAction::ToggleEditor => {
                     // On envoie un Back à la logique pour qu'elle sache qu'on sort proprement
-                    ctx.send_to_logic(MainToLogic::Input(KeyAction::UI(UIAction::Back)));
+                    ctx.send_to_logic(MainToLogic::Input(GameAction::Back));
 
                     return StateTransition::Replace(Box::new(MenuStateController::new(
                         Arc::clone(&self.menu_state),

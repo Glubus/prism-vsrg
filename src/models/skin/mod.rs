@@ -4,7 +4,7 @@
 //! Each element contains its own position, size, colors, and optional images.
 //! Supports multi-keymode (4K, 5K, 6K, 7K) with per-column configurations.
 
-#![allow(dead_code)]
+
 
 pub mod common;
 pub mod editor;
@@ -20,17 +20,13 @@ pub use common::{
 pub use editor::EditorConfig;
 pub use gameplay::{
     /*BurstConfig,*/ GameplayDefaults,
-    /*HoldConfig,*/ KeyModeConfig, /*MineConfig,*/
-    /*NoteColumnConfig,*/
-    /*NoteDefaults,*/ NotesDefaults, PlayfieldConfig,
-    /*ReceptorColumnConfig,*/ ReceptorDefaults,
+    /*HoldConfig,*/ KeyModeConfig,
 };
 pub use general::SkinGeneral;
 pub use hud::{
-    AccuracyConfig, ComboConfig, HitBarConfig, HudConfig, JudgementFlashSet, JudgementLabels,
-    NpsConfig, ScoreConfig,
+    HudConfig, JudgementLabels,
 };
-pub use menus::{MenusConfig, PanelStyleConfig, SongSelectConfig};
+pub use menus::MenusConfig;
 
 use std::collections::HashMap;
 use std::fs;
@@ -470,3 +466,4 @@ pub fn init_skin_structure() -> Result<(), String> {
 
     Ok(())
 }
+

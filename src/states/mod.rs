@@ -3,15 +3,13 @@
 //! Note: This module contains legacy state machine code kept for reference.
 //! The active state management is in `logic::state`.
 
-#![allow(dead_code)]
-
 mod editor;
 mod menu;
 mod play;
 mod result;
 
-use crate::core::input::actions::KeyAction;
 use crate::database::DbManager;
+use crate::input::events::GameAction;
 use crate::render::renderer::Renderer;
 use crate::shared::messages::MainToLogic;
 use std::sync::mpsc::Sender; // Channel to talk to the logic thread
@@ -86,7 +84,7 @@ pub trait GameState {
     fn handle_input(
         &mut self,
         _event: &WindowEvent,
-        _action: Option<KeyAction>,
+        _action: Option<GameAction>,
         _ctx: &mut StateContext,
     ) -> StateTransition {
         StateTransition::None
@@ -100,3 +98,4 @@ pub trait GameState {
         StateTransition::None
     }
 }
+

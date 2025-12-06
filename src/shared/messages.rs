@@ -1,14 +1,12 @@
 //! Inter-thread message types (legacy, kept for reference).
 
-#![allow(dead_code)]
-
-use crate::core::input::actions::KeyAction;
+use crate::input::events::GameAction;
 use crate::shared::snapshot::RenderState;
 use std::path::PathBuf;
 
 #[derive(Debug)]
 pub enum MainToLogic {
-    Input(KeyAction),
+    Input(GameAction),
     Resize { width: u32, height: u32 },
     SettingsChanged,
     Shutdown,

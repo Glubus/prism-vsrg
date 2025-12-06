@@ -1,6 +1,6 @@
 //! Leaderboard display component.
 
-#![allow(dead_code)]
+
 
 use crate::models::engine::NoteData;
 use crate::models::engine::hit_window::HitWindow;
@@ -178,3 +178,4 @@ impl Leaderboard {
         clicked_result
     }
 }
+

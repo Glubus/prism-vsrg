@@ -17,7 +17,6 @@ mod logic;
 mod render;
 mod system;
 
-mod core;
 mod database;
 mod difficulty;
 mod models;
@@ -65,3 +64,4 @@ fn main() {
     // Run the render loop (blocking)
     render::app::App::run(render_bus);
 }
+
