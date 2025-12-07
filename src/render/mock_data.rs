@@ -1,8 +1,8 @@
 use crate::database::models::{Beatmap, BeatmapRating, BeatmapWithRatings, Beatmapset};
 use crate::models::engine::NoteData;
-use crate::models::menu::{GameResultData, MenuState};
 use crate::models::stats::{HitStats, Judgement};
 use crate::shared::snapshot::{GameplaySnapshot, RenderState};
+use crate::state::{GameResultData, MenuState};
 use crate::views::components::editor::layout::EditorScene;
 use std::time::Instant;
 

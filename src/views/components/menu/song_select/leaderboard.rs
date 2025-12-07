@@ -5,9 +5,9 @@ use std::path::Path;
 use crate::database::replay_storage;
 use crate::models::engine::NoteData;
 use crate::models::engine::hit_window::HitWindow;
-use crate::models::menu::GameResultData;
 use crate::models::replay::{ReplayData, ReplayResult, simulate_replay};
 use crate::models::stats::HitStats;
+use crate::state::GameResultData;
 use crate::views::components::menu::song_select::leaderboard_card::LeaderboardCard;
 use egui::{Color32, ScrollArea};
 
