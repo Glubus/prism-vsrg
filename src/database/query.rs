@@ -273,7 +273,7 @@ pub async fn search_beatmapsets(
 // REPLAY QUERIES
 // ============================================================================
 
-/// Inserts a replay and derives a deterministic hash.
+/// Inserts a replay: compresses data with Brotli, saves to file, stores path in DB.
 pub async fn insert_replay(
     pool: &SqlitePool,
     beatmap_hash: &str,
@@ -284,14 +284,24 @@ pub async fn insert_replay(
     rate: f64,
     data: &str,
 ) -> Result<String, sqlx::Error> {
+    // Generate deterministic hash
     let hash_input = format!(
         "{}:{}:{}:{}:{}:{}:{}",
         beatmap_hash, timestamp, score, accuracy, max_combo, rate, data
     );
     let hash = format!("{:x}", md5::compute(hash_input));
 
+    // Save compressed replay to file
+    let file_path = crate::database::replay_storage::save_replay(&hash, data).map_err(|e| {
+        sqlx::Error::Io(std::io::Error::other(format!(
+            "Failed to save replay: {}",
+            e
+        )))
+    })?;
+
+    // Insert into database with file_path
     sqlx::query(
-        "INSERT INTO replay (hash, beatmap_hash, timestamp, score, accuracy, max_combo, rate, data) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"
+        "INSERT INTO replay (hash, beatmap_hash, timestamp, score, accuracy, max_combo, rate, file_path) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"
     )
     .bind(&hash)
     .bind(beatmap_hash)
@@ -300,7 +310,7 @@ pub async fn insert_replay(
     .bind(accuracy)
     .bind(max_combo)
     .bind(rate)
-    .bind(data)
+    .bind(&file_path)
     .execute(pool)
     .await?;
     Ok(hash)
@@ -312,7 +322,7 @@ pub async fn get_replays_for_beatmap(
     beatmap_hash: &str,
 ) -> Result<Vec<Replay>, sqlx::Error> {
     let replays: Vec<Replay> = sqlx::query_as(
-        "SELECT hash, beatmap_hash, timestamp, score, accuracy, max_combo, rate, data FROM replay WHERE beatmap_hash = ?1 ORDER BY rate DESC, accuracy DESC, timestamp DESC LIMIT 10"
+        "SELECT hash, beatmap_hash, timestamp, score, accuracy, max_combo, rate, file_path FROM replay WHERE beatmap_hash = ?1 ORDER BY rate DESC, accuracy DESC, timestamp DESC LIMIT 10"
     )
     .bind(beatmap_hash)
     .fetch_all(pool)

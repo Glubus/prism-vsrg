@@ -11,6 +11,7 @@ const MIGRATION_CREATE_BEATMAP: &str = include_str!("migrations/002_create_beatm
 const MIGRATION_CREATE_REPLAY: &str = include_str!("migrations/003_create_replay.sql");
 const MIGRATION_CREATE_BEATMAP_RATING: &str =
     include_str!("migrations/005_create_beatmap_rating.sql");
+const MIGRATION_REPLAY_FILE_STORAGE: &str = include_str!("migrations/006_replay_file_storage.sql");
 
 pub struct Database {
     pool: SqlitePool,
@@ -58,6 +59,7 @@ impl Database {
             MIGRATION_CREATE_BEATMAP,
             MIGRATION_CREATE_REPLAY,
             MIGRATION_CREATE_BEATMAP_RATING,
+            MIGRATION_REPLAY_FILE_STORAGE,
         ] {
             sqlx::query(migration).execute(&self.pool).await?;
         }

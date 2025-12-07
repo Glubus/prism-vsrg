@@ -92,6 +92,6 @@ pub struct Replay {
     pub score: i32,
     pub accuracy: f64,
     pub max_combo: i32,
-    pub rate: f64,    // Playback rate (1.0 = normal, 1.5 = 1.5x, etc.)
-    pub data: String, // JSON or other encoded replay payload
+    pub rate: f64,         // Playback rate (1.0 = normal, 1.5 = 1.5x, etc.)
+    pub file_path: String, // Path to Brotli-compressed replay file (data/r/{hash}.r)
 }
