@@ -7,6 +7,8 @@ use crate::input::events::GameAction;
 use crate::models::settings::SettingsState;
 use crate::system::bus::SystemBus;
 
+use super::GameResultData;
+
 /// Context passed to action handlers with shared resources.
 pub struct ActionContext<'a> {
     pub db_manager: &'a mut DbManager,
@@ -14,19 +16,26 @@ pub struct ActionContext<'a> {
     pub bus: &'a SystemBus,
 }
 
-/// Transition result from handling an action.
+/// Context passed to update methods with shared resources.
+pub struct UpdateContext<'a> {
+    pub db_manager: &'a mut DbManager,
+    pub settings: &'a SettingsState,
+    pub bus: &'a SystemBus,
+}
+
+/// Transition result from handling an action or update.
 #[derive(Debug, Clone)]
 pub enum Transition {
     /// Stay in current state.
     None,
-    /// Transition to menu state with optional menu state.
+    /// Transition to menu state.
     ToMenu,
-    /// Transition to gameplay with engine data.
+    /// Transition to gameplay.
     ToGame,
     /// Transition to editor.
     ToEditor,
-    /// Transition to result screen.
-    ToResult,
+    /// Transition to result screen with game results.
+    ToResult(GameResultData),
     /// Exit the application.
     Exit,
 }
@@ -46,12 +55,17 @@ pub trait Snapshot {
 /// Trait for per-frame updates.
 ///
 /// States that need frame-by-frame updates (like gameplay) implement this.
+/// Returns an optional transition to another state.
 pub trait Update {
     /// Updates the state for one frame.
     ///
     /// # Arguments
     /// * `dt` - Delta time in seconds since last update.
-    fn update(&mut self, dt: f64);
+    /// * `ctx` - Context with shared resources (db, settings, bus).
+    ///
+    /// # Returns
+    /// Optional transition to another state.
+    fn update(&mut self, dt: f64, ctx: &mut UpdateContext) -> Option<Transition>;
 }
 
 /// Trait for handling game actions.

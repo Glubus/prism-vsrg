@@ -16,6 +16,7 @@ pub mod result;
 pub mod traits;
 
 // Re-exports for convenient access
+pub use editor::EditorState;
 pub use game::GameEngine;
 pub use global::GlobalState;
 pub use menu::{ChartCache, DifficultyCache, MenuState, RateCacheEntry};
