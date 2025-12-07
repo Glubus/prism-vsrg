@@ -107,8 +107,7 @@ fn create_mock_menu() -> RenderState {
         technical: 12.0,
     }];
 
-    state
-        .beatmapsets
+    std::sync::Arc::make_mut(&mut state.beatmapsets)
         .push((set1, vec![BeatmapWithRatings::new(bm1, ratings)]));
     state.selected_index = 0;
 
@@ -137,4 +136,3 @@ fn create_mock_result() -> RenderState {
         show_settings: false,
     })
 }
-

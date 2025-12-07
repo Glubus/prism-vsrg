@@ -9,6 +9,7 @@ use crate::shared::snapshot::{EditorSnapshot, RenderState};
 use crate::system::bus::SystemBus;
 use crossbeam_channel::Sender;
 use serde_json;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// High-level application states driven by `GlobalState`.
@@ -131,7 +132,7 @@ impl GlobalState {
                 let mut request_hash = None;
                 let mut cache = None;
                 if let AppState::Menu(menu) = &mut self.current_state {
-                    menu.beatmapsets = guard.beatmapsets.clone();
+                    menu.beatmapsets = Arc::new(guard.beatmapsets.clone());
                     menu.start_index = 0;
                     menu.end_index = menu.visible_count.min(menu.beatmapsets.len());
                     menu.selected_index = 0;
@@ -867,4 +868,3 @@ fn create_debug_chart() -> Vec<crate::models::engine::NoteData> {
 
     notes
 }
-
