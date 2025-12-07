@@ -5,7 +5,6 @@
 
 pub mod audio;
 pub mod audio_thread;
-pub mod engine;
 pub mod state;
 
 use crate::database::DbManager;
@@ -96,4 +95,3 @@ pub fn start_thread(bus: SystemBus, db_manager: DbManager) {
         })
         .expect("Failed to spawn Logic thread");
 }
-

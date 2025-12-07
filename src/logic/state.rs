@@ -1,11 +1,10 @@
 use crate::database::{DbManager, DbStatus, SaveReplayCommand};
 use crate::input::events::{EditMode, EditorTarget, GameAction, InputCommand};
-use crate::logic::engine::GameEngine;
 use crate::models::engine::hit_window::HitWindow;
 use crate::models::replay::simulate_replay;
 use crate::models::settings::{HitWindowMode, SettingsState};
 use crate::shared::snapshot::{EditorSnapshot, RenderState};
-use crate::state::{GameResultData, MenuState};
+use crate::state::{GameEngine, GameResultData, MenuState};
 use crate::system::bus::SystemBus;
 use crossbeam_channel::Sender;
 use serde_json;
