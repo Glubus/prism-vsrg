@@ -16,7 +16,6 @@ engine.workspace = true
 replay.workspace = true
 chart.workspace = true
 skin.workspace = true
-audio.workspace = true
 database.workspace = true
 settings.workspace = true
 

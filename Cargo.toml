@@ -6,7 +6,6 @@ members = [
     "lib/replay",
     "lib/chart",
     "lib/skin",
-    "lib/audio",
     "lib/database",
     "lib/settings",
 
@@ -17,8 +16,8 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-license = "MIT"
-repository = "https://github.com/Glubus/rvsrg"
+license = "AGPL-3.0"
+repository = "https://github.com/Glubus/prism-vsrg"
 
 [workspace.dependencies]
 # === Core ===
