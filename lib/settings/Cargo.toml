@@ -1,0 +1,12 @@
+[package]
+name = "settings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "User settings and configuration for Prism"
+
+[dependencies]
+serde.workspace = true
+toml.workspace = true
+rkyv.workspace = true

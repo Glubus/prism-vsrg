@@ -1,0 +1,77 @@
+[workspace]
+resolver = "2"
+members = [
+    # Libraries
+    "lib/engine",
+    "lib/replay",
+    "lib/chart",
+    "lib/skin",
+    "lib/audio",
+    "lib/database",
+    "lib/settings",
+
+    # Applications
+    "apps/game",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/Glubus/rvsrg"
+
+[workspace.dependencies]
+# === Core ===
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.9"
+log = "0.4"
+env_logger = "0.11"
+
+# === Serialization ===
+rkyv = "0.8"
+zstd = "0.13"
+
+# === Async ===
+tokio = { version = "1.0", features = ["full"] }
+crossbeam-channel = "0.5"
+
+# === Audio ===
+rodio = "0.21"
+
+# === Chart Parsing ===
+rosu-map = "0.2.1"
+rosu-pp = "3.1.0"
+minacalc-rs = { version = "0.2.2", features = ["osu"] }
+rhythm-open-exchange = "0.2.2"
+ssrrr = "0.2.1"
+
+# === Utilities ===
+md5 = "0.8"
+ordered-float = "5.1"
+bytemuck = { version = "1.14", features = ["derive"] }
+rand = "0.9"
+
+# === Graphics (game only) ===
+wgpu = "27.0.1"
+wgpu_text = "27.0.1"
+winit = "0.30"
+pollster = "0.4"
+image = "0.25"
+egui = "0.33"
+egui-wgpu = { version = "0.33", default-features = false }
+egui-winit = "0.33"
+egui_extras = "0.33"
+rfd = "0.16.0"
+
+# === Database ===
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+
+# === Local crates ===
+engine = { path = "lib/engine" }
+replay = { path = "lib/replay" }
+chart = { path = "lib/chart" }
+skin = { path = "lib/skin" }
+audio = { path = "lib/audio" }
+database = { path = "lib/database" }
+settings = { path = "lib/settings" }

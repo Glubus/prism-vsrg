@@ -1,0 +1,18 @@
+[package]
+name = "chart"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Chart parsing and difficulty calculation for Prism"
+
+[dependencies]
+engine.workspace = true
+rosu-map.workspace = true
+rosu-pp.workspace = true
+minacalc-rs.workspace = true
+rhythm-open-exchange.workspace = true
+ssrrr.workspace = true
+serde.workspace = true
+log.workspace = true
+md5.workspace = true

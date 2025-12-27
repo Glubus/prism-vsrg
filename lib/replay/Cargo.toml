@@ -1,0 +1,14 @@
+[package]
+name = "replay"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Replay system for Prism: data structures, simulation, and storage"
+
+[dependencies]
+engine.workspace = true
+serde.workspace = true
+rkyv.workspace = true
+zstd.workspace = true
+log.workspace = true

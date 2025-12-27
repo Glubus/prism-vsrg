@@ -1,0 +1,582 @@
+//! Main menu state management.
+//!
+//! This module handles the song select menu state including beatmap selection,
+//! rate changes, difficulty caching, and leaderboard display.
+//!
+//! ## Architecture
+//!
+//! - Beatmaps are loaded via pagination (50 items at a time)
+//! - Difficulty ratings are calculated ON-DEMAND when a map is selected
+//! - Ratings are cached in memory (not DB) for the session
+
+pub mod actions;
+mod chart_cache;
+mod difficulty_cache;
+mod rate_cache;
+
+// Re-exports
+pub use chart_cache::ChartCache;
+pub use difficulty_cache::DifficultyCache;
+pub use rate_cache::RateCacheEntry;
+
+use crate::state::mods::ActiveMods;
+use crate::state::result::GameResultData;
+use crate::ui::song_select::CalculatorOption;
+use chart::{self, BeatmapSsr};
+use database::MenuSearchFilters;
+use database::models::Replay;
+use database::{BeatmapRating, BeatmapWithRatings, Beatmapset, Database};
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+
+/// Modes available in the song selection screen
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SongSelectMode {
+    Key4,
+    Key7,
+    Practice,
+    Coop,
+}
+
+impl Default for SongSelectMode {
+    fn default() -> Self {
+        Self::Key4
+    }
+}
+
+impl SongSelectMode {
+    pub fn key_count(&self) -> i32 {
+        match self {
+            SongSelectMode::Key4 => 4,
+            SongSelectMode::Key7 => 7,
+            SongSelectMode::Practice => 4, // Default to 4K for practice
+            SongSelectMode::Coop => 4,     // Default to 4K for coop
+        }
+    }
+}
+
+/// Main state for the song selection menu.
+#[derive(Clone, Debug)]
+pub struct MenuState {
+    // Active modes (4K, 7K, etc.) for filtering
+    pub active_modes: HashSet<SongSelectMode>,
+    // Cached indices of visible beatmapsets based on filters
+    pub filtered_indices: Vec<usize>,
+
+    // Current beatmapsets (loaded via pagination or full load for backwards compat)
+    // Wrapped in Arc for O(1) clones in create_snapshot()
+    pub beatmapsets: Arc<Vec<(Beatmapset, Vec<BeatmapWithRatings>)>>,
+
+    // Pagination state
+    pub total_count: usize,
+    pub current_offset: usize,
+
+    // Selection state
+    pub start_index: usize,
+    pub end_index: usize,
+    pub selected_index: usize,
+    pub selected_difficulty_index: usize,
+    pub visible_count: usize,
+
+    // UI state
+    pub in_menu: bool,
+    pub in_editor: bool,
+    pub show_result: bool,
+    pub show_settings: bool,
+
+    // Playback rate
+    pub rate: f64,
+
+    // Result screen
+    pub last_result: Option<GameResultData>,
+    pub should_close_result: bool,
+
+    // Rate cache (available rates per beatmap) - Arc for O(1) clones
+    pub rate_cache: Arc<HashMap<String, RateCacheEntry>>,
+
+    // Failed rate calculations (to avoid retrying)
+    pub failed_rate_hashes: HashSet<String>,
+
+    // On-demand difficulty cache (in RAM only!)
+    pub difficulty_cache: DifficultyCache,
+
+    // Active difficulty calculator
+    pub active_calculator: String,
+
+    // Available calculators (builtin + custom)
+    pub available_calculators: Vec<CalculatorOption>,
+
+    // Search/filter
+    pub search_filters: MenuSearchFilters,
+
+    // Leaderboard
+    pub leaderboard_scores: Vec<Replay>,
+    pub leaderboard_hash: Option<String>,
+
+    // Chart cache for gameplay - Arc for O(1) clones
+    pub chart_cache: Arc<Option<ChartCache>>,
+
+    // Database Status
+    pub db_status: database::DbStatus,
+
+    // Active gameplay mods
+    pub active_mods: ActiveMods,
+}
+
+impl MenuState {
+    pub fn new() -> Self {
+        let mut active_modes = HashSet::new();
+        active_modes.insert(SongSelectMode::default());
+
+        Self {
+            active_modes,
+            filtered_indices: Vec::new(),
+            beatmapsets: Arc::new(Vec::new()),
+            total_count: 0,
+            current_offset: 0,
+            start_index: 0,
+            end_index: 0,
+            selected_index: 0,
+            selected_difficulty_index: 0,
+            visible_count: 10,
+            in_menu: true,
+            in_editor: false,
+            show_result: false,
+            show_settings: false,
+            rate: 1.0,
+            last_result: None,
+            should_close_result: false,
+            rate_cache: Arc::new(HashMap::new()),
+            failed_rate_hashes: HashSet::new(),
+            difficulty_cache: DifficultyCache::new(),
+            active_calculator: "etterna".to_string(),
+            available_calculators: vec![
+                CalculatorOption::new("etterna", "Etterna"),
+                CalculatorOption::new("osu", "osu!"),
+            ],
+            search_filters: MenuSearchFilters::default(),
+            leaderboard_scores: Vec::new(),
+            leaderboard_hash: None,
+            chart_cache: Arc::new(None),
+            db_status: database::DbStatus::Idle,
+            active_mods: ActiveMods::new(),
+        }
+    }
+
+    /// Loads the currently selected beatmap's chart into cache.
+    ///
+    /// Returns `true` if a new chart was loaded, `false` if already cached.
+    pub fn ensure_chart_cache(&mut self) -> bool {
+        let selected = match self.get_selected_beatmap() {
+            Some(bm) => bm,
+            None => return false,
+        };
+
+        let beatmap_hash = selected.beatmap.hash.clone();
+        let beatmap_path = PathBuf::from(&selected.beatmap.path);
+
+        if let Some(ref cache) = *self.chart_cache {
+            if cache.beatmap_hash == beatmap_hash {
+                return false;
+            }
+        }
+
+        match engine::load_map_safe(&beatmap_path) {
+            Some((audio_path, chart, key_count)) => {
+                log::info!(
+                    "MENU: Chart cached for {} ({} notes, {}K)",
+                    beatmap_hash,
+                    chart.len(),
+                    key_count
+                );
+                self.chart_cache = Arc::new(Some(ChartCache {
+                    beatmap_hash,
+                    chart,
+                    audio_path,
+                    map_path: beatmap_path,
+                    key_count,
+                }));
+                true
+            }
+            None => {
+                log::error!("MENU: Failed to load chart for caching");
+                self.chart_cache = Arc::new(None);
+                false
+            }
+        }
+    }
+
+    pub fn get_cached_chart(&self) -> Option<&ChartCache> {
+        (*self.chart_cache).as_ref()
+    }
+
+    pub fn get_cached_chart_note_count(&self) -> usize {
+        (*self.chart_cache)
+            .as_ref()
+            .map(|c| c.chart.len())
+            .unwrap_or(0)
+    }
+
+    /// Calculates difficulty for the currently selected beatmap on-demand.
+    /// Results are cached in memory (not DB).
+    pub fn ensure_difficulty_calculated(&mut self) -> Option<BeatmapSsr> {
+        let selected = self.get_selected_beatmap()?;
+        let beatmap_hash = selected.beatmap.hash.clone();
+        let beatmap_path = selected.beatmap.path.clone();
+        let calculator = self.active_calculator.clone();
+        let rate = self.rate;
+
+        // Check cache first
+        if let Some(cached) = self.difficulty_cache.get(&beatmap_hash, &calculator, rate) {
+            return Some(cached.clone());
+        }
+
+        // Load any format via ROX -> encode to .osu -> parse with rosu_map
+        let map = match chart::load_as_rosu_beatmap(std::path::Path::new(&beatmap_path)) {
+            Ok(map) => map,
+            Err(err) => {
+                log::error!("MENU: Failed to load beatmap for difficulty calc: {}", err);
+                return None;
+            }
+        };
+
+        match chart::calculate_on_demand(&map, &calculator, rate) {
+            Ok(ssr) => {
+                self.difficulty_cache
+                    .insert(&beatmap_hash, &calculator, rate, ssr.clone());
+                Some(ssr)
+            }
+            Err(err) => {
+                log::error!("MENU: Failed to calculate difficulty: {}", err);
+                None
+            }
+        }
+    }
+
+    /// Gets the cached difficulty for the selected beatmap at the current rate.
+    pub fn get_current_difficulty(&self) -> Option<&BeatmapSsr> {
+        let selected = self.get_selected_beatmap()?;
+        self.difficulty_cache
+            .get(&selected.beatmap.hash, &self.active_calculator, self.rate)
+    }
+
+    pub fn increase_rate(&mut self) {
+        let next_rate = {
+            let current = self.rate;
+            self.ensure_selected_rate_entry()
+                .and_then(|entry| entry.next_rate(current))
+        };
+        if let Some(rate) = next_rate {
+            self.rate = rate;
+            return;
+        }
+        self.rate = (self.rate + 0.1).min(2.0);
+    }
+
+    pub fn decrease_rate(&mut self) {
+        let previous_rate = {
+            let current = self.rate;
+            self.ensure_selected_rate_entry()
+                .and_then(|entry| entry.previous_rate(current))
+        };
+        if let Some(rate) = previous_rate {
+            self.rate = rate;
+            return;
+        }
+        self.rate = (self.rate - 0.1).max(0.5);
+    }
+
+    pub fn ensure_selected_rate_cache(&mut self) {
+        let _ = self.ensure_selected_rate_entry();
+    }
+
+    pub fn get_cached_ratings_for(
+        &self,
+        beatmap_hash: &str,
+        rate: f64,
+    ) -> Option<&[BeatmapRating]> {
+        self.rate_cache
+            .get(beatmap_hash)
+            .and_then(|entry| entry.get_ratings(rate))
+            .map(|list| list.as_slice())
+    }
+
+    fn ensure_selected_rate_entry(&mut self) -> Option<&RateCacheEntry> {
+        let selected = self.get_selected_beatmap()?;
+        let beatmap_hash = selected.beatmap.hash.clone();
+        let beatmap_path = selected.beatmap.path.clone();
+
+        // Skip if already known to fail
+        if self.failed_rate_hashes.contains(&beatmap_hash) {
+            return None;
+        }
+
+        if !self.rate_cache.contains_key(&beatmap_hash) {
+            let map = match chart::load_as_rosu_beatmap(std::path::Path::new(&beatmap_path)) {
+                Ok(map) => map,
+                Err(err) => {
+                    log::debug!(
+                        "MENU: Failed to load beatmap {} to compute rates: {}",
+                        beatmap_hash,
+                        err
+                    );
+                    self.failed_rate_hashes.insert(beatmap_hash);
+                    return None;
+                }
+            };
+
+            match chart::analyze_all_rates(&map) {
+                Ok(rate_data) => {
+                    let entry = RateCacheEntry::from_analysis(&beatmap_hash, rate_data);
+                    let adjusted_rate = entry.closest_rate(self.rate);
+                    if let Some(rate) = adjusted_rate {
+                        self.rate = rate;
+                    }
+                    Arc::make_mut(&mut self.rate_cache).insert(beatmap_hash.clone(), entry);
+                }
+                Err(_) => {
+                    // Silently skip unsupported maps (7K, etc.)
+                    self.failed_rate_hashes.insert(beatmap_hash);
+                    return None;
+                }
+            }
+        } else if let Some(entry) = self.rate_cache.get(&beatmap_hash)
+            && !entry.contains_rate(self.rate)
+            && let Some(rate) = entry.closest_rate(self.rate)
+        {
+            self.rate = rate;
+        }
+
+        self.rate_cache.get(&beatmap_hash)
+    }
+
+    pub async fn load_from_db(
+        menu_state: Arc<Mutex<Self>>,
+        db: &Database,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let beatmapsets = db.get_all_beatmapsets().await?;
+        let total_count = beatmapsets.len();
+
+        if let Ok(mut state) = menu_state.lock() {
+            state.beatmapsets = Arc::new(beatmapsets);
+            state.total_count = total_count;
+            state.current_offset = 0;
+            state.update_filtered_indices(); // Initialize filtered indices
+            state.selected_index = state.filtered_indices.first().copied().unwrap_or(0);
+            state.selected_difficulty_index = 0;
+            state.end_index = state.visible_count.min(state.beatmapsets.len());
+            state.start_index = 0;
+            Arc::make_mut(&mut state.rate_cache).clear();
+            state.failed_rate_hashes.clear();
+            state.difficulty_cache.clear();
+            state.rate = 1.0;
+            state.search_filters = MenuSearchFilters::default();
+            state.leaderboard_scores.clear();
+            state.leaderboard_hash = None;
+            state.chart_cache = Arc::new(None);
+        }
+        Ok(())
+    }
+
+    pub fn get_visible_items(&self) -> &[(Beatmapset, Vec<BeatmapWithRatings>)] {
+        if self.start_index >= self.beatmapsets.len() {
+            return &[];
+        }
+        let end = self.end_index.min(self.beatmapsets.len());
+        &self.beatmapsets[self.start_index..end]
+    }
+
+    pub fn get_relative_selected_index(&self) -> usize {
+        if self.selected_index < self.start_index {
+            0
+        } else if self.selected_index >= self.end_index {
+            self.end_index
+                .saturating_sub(self.start_index)
+                .saturating_sub(1)
+        } else {
+            self.selected_index - self.start_index
+        }
+    }
+
+    pub fn update_filtered_indices(&mut self) {
+        // Logic to update filtered indices based on search, sort, and key count
+        let search_query = self.search_filters.query.to_lowercase();
+        let show_all = self.active_modes.is_empty(); // Show all if no filter is active
+
+        self.filtered_indices = self
+            .beatmapsets
+            .iter()
+            .enumerate()
+            .filter(|(_, (set, maps))| {
+                // Filter by search query
+                if !search_query.is_empty() {
+                    let matches_title = set
+                        .title
+                        .as_deref()
+                        .map(|s| s.to_lowercase().contains(&search_query))
+                        .unwrap_or(false);
+
+                    let matches_artist = set
+                        .artist
+                        .as_deref()
+                        .map(|s| s.to_lowercase().contains(&search_query))
+                        .unwrap_or(false);
+
+                    if !(matches_title || matches_artist) {
+                        return false;
+                    }
+                }
+
+                // Filter by active modes (key count)
+                if !show_all {
+                    let has_matching_map = maps.iter().any(|map| {
+                        self.active_modes
+                            .iter()
+                            .any(|mode| mode.key_count() == map.beatmap.key_count)
+                    });
+                    if !has_matching_map {
+                        return false;
+                    }
+                }
+
+                true
+            })
+            .map(|(i, _)| i)
+            .collect();
+        // Log the result for debugging
+        if self.filtered_indices.is_empty() {
+            log::warn!(
+                "MENU: Filter result is empty. Search: '{}', Modes: {:?}",
+                search_query,
+                self.active_modes
+            );
+        } else {
+            log::info!(
+                "MENU: Filtered indices count: {}",
+                self.filtered_indices.len()
+            );
+        }
+
+        // Ensure selected index is valid
+        if !self.filtered_indices.contains(&self.selected_index) {
+            self.selected_index = self.filtered_indices.first().copied().unwrap_or(0);
+        }
+    }
+
+    pub fn move_up(&mut self) {
+        if self.filtered_indices.is_empty() {
+            return;
+        }
+
+        // Find current position in filtered list
+        let current_pos = self
+            .filtered_indices
+            .iter()
+            .position(|&idx| idx == self.selected_index)
+            .unwrap_or(0); // If not found, default to first
+
+        if current_pos > 0 {
+            self.selected_index = self.filtered_indices[current_pos - 1];
+            self.selected_difficulty_index = 0;
+
+            if self.selected_index < self.start_index {
+                self.start_index = self.selected_index;
+                self.end_index =
+                    (self.start_index + self.visible_count).min(self.beatmapsets.len());
+            }
+        }
+    }
+
+    pub fn move_down(&mut self) {
+        if self.filtered_indices.is_empty() {
+            return;
+        }
+
+        let current_pos = self
+            .filtered_indices
+            .iter()
+            .position(|&idx| idx == self.selected_index)
+            .unwrap_or(0);
+
+        if current_pos < self.filtered_indices.len() - 1 {
+            self.selected_index = self.filtered_indices[current_pos + 1];
+            self.selected_difficulty_index = 0;
+
+            if self.selected_index >= self.end_index {
+                self.end_index = (self.selected_index + 1).min(self.beatmapsets.len());
+                self.start_index = self.end_index.saturating_sub(self.visible_count);
+            }
+        }
+    }
+
+    pub fn get_selected_beatmapset(&self) -> Option<&(Beatmapset, Vec<BeatmapWithRatings>)> {
+        self.beatmapsets.get(self.selected_index)
+    }
+
+    fn get_selected_beatmap(&self) -> Option<&BeatmapWithRatings> {
+        self.get_selected_beatmapset().and_then(|(_, beatmaps)| {
+            let idx = self
+                .selected_difficulty_index
+                .min(beatmaps.len().saturating_sub(1));
+            beatmaps.get(idx)
+        })
+    }
+
+    pub fn get_selected_beatmap_path(&self) -> Option<PathBuf> {
+        self.get_selected_beatmap()
+            .map(|bm| PathBuf::from(&bm.beatmap.path))
+    }
+
+    pub fn next_difficulty(&mut self) {
+        if let Some((_, beatmaps)) = self.get_selected_beatmapset() {
+            if beatmaps.is_empty() {
+                self.selected_difficulty_index = 0;
+            } else {
+                self.selected_difficulty_index =
+                    (self.selected_difficulty_index + 1) % beatmaps.len();
+            }
+        }
+    }
+
+    pub fn previous_difficulty(&mut self) {
+        if let Some((_, beatmaps)) = self.get_selected_beatmapset() {
+            if beatmaps.is_empty() {
+                self.selected_difficulty_index = 0;
+            } else if self.selected_difficulty_index == 0 {
+                self.selected_difficulty_index = beatmaps.len() - 1;
+            } else {
+                self.selected_difficulty_index -= 1;
+            }
+        }
+    }
+
+    pub fn get_selected_difficulty_name(&self) -> Option<String> {
+        self.get_selected_beatmap()
+            .and_then(|bm| bm.beatmap.difficulty_name.clone())
+    }
+
+    pub fn get_selected_beatmap_hash(&self) -> Option<String> {
+        self.get_selected_beatmap()
+            .map(|bm| bm.beatmap.hash.clone())
+    }
+
+    pub fn set_leaderboard(&mut self, hash: Option<String>, scores: Vec<Replay>) {
+        self.leaderboard_hash = hash;
+        self.leaderboard_scores = scores;
+    }
+
+    /// Sets the active difficulty calculator.
+    pub fn set_calculator(&mut self, calculator_id: &str) {
+        if self.active_calculator != calculator_id {
+            self.active_calculator = calculator_id.to_string();
+            // Clear difficulty cache when changing calculator
+            // (rate cache is independent of calculator)
+        }
+    }
+
+    /// Gets the available calculators.
+    pub fn available_calculators(&self) -> Vec<(&'static str, &'static str)> {
+        vec![("etterna", "Etterna (MinaCalc)"), ("osu", "osu! (rosu-pp)")]
+    }
+}

@@ -1,0 +1,150 @@
+use crate::shared::snapshot::{GameplaySnapshot, RenderState};
+use crate::state::{GameResultData, MenuState};
+use crate::views::components::editor::layout::EditorScene;
+use database::models::{Beatmap, BeatmapRating, BeatmapWithRatings, Beatmapset};
+use engine::NoteData;
+use engine::{HitStats, Judgement};
+use std::time::Instant;
+
+/// Génère un état de rendu factice basé sur la scène sélectionnée dans l'éditeur.
+pub fn create_mock_state(scene: EditorScene, key_count: usize) -> RenderState {
+    match scene {
+        EditorScene::Gameplay => create_mock_gameplay(key_count),
+        EditorScene::SongSelect => create_mock_menu(),
+        EditorScene::ResultScreen => create_mock_result(),
+    }
+}
+
+fn create_mock_gameplay(key_count: usize) -> RenderState {
+    use engine::US_PER_MS;
+
+    let mut notes = Vec::new();
+    let time_base_us: i64 = 2000 * US_PER_MS; // 2000ms in µs
+
+    // Pattern en escalier pour visualiser les colonnes
+    for i in 0..8 {
+        let col = (i % key_count) as u8;
+        let time_us = time_base_us + (i as i64 * 200 * US_PER_MS);
+        notes.push(NoteData::tap(time_us, col));
+    }
+
+    // Un Hold (Note longue)
+    if key_count > 0 {
+        notes.push(NoteData::hold(
+            time_base_us + 2000 * US_PER_MS,
+            0,
+            500 * US_PER_MS,
+        ));
+    }
+
+    // Une Mine
+    if key_count > 1 {
+        notes.push(NoteData::mine(time_base_us + 2200 * US_PER_MS, 1));
+    }
+
+    // Un Burst
+    if key_count > 2 {
+        notes.push(NoteData::burst(
+            time_base_us + 2500 * US_PER_MS,
+            2,
+            200 * US_PER_MS,
+        ));
+    }
+
+    RenderState::InGame(GameplaySnapshot {
+        key_count,
+        audio_time: (time_base_us + 500 * US_PER_MS) as f64 / US_PER_MS as f64, // Keep as ms for now
+        timestamp: Instant::now(),
+        rate: 1.0,
+        scroll_speed: 650.0,
+        visible_notes: notes,
+        keys_held: vec![false; key_count], // Aucune touche pressée
+        score: 125000,
+        accuracy: 98.45,
+        combo: 124,
+        hit_stats: HitStats {
+            marv: 100,
+            perfect: 20,
+            great: 4,
+            good: 0,
+            bad: 0,
+            miss: 0,
+            ghost_tap: 0,
+        },
+        remaining_notes: 50,
+        last_hit_judgement: Some(Judgement::Marv), // Affiche un jugement pour tester la position
+        last_hit_timing: Some(-4.5),
+        nps: 12.5,
+        practice_mode: false,
+        checkpoints: vec![],
+        map_duration: 120000.0,
+    })
+}
+
+fn create_mock_menu() -> RenderState {
+    let mut state = MenuState::new();
+
+    // Création d'un set de beatmaps factice
+    let set1 = Beatmapset {
+        id: 1,
+        path: String::from("mock_path_1"),
+        image_path: None, // Le renderer utilisera le background par défaut
+        artist: Some(String::from("Camellia")),
+        title: Some(String::from("Ghost")),
+    };
+
+    let bm1 = Beatmap {
+        hash: String::from("hash1"),
+        beatmapset_id: 1,
+        path: String::from("path1"),
+        difficulty_name: Some(String::from("Expert")),
+        note_count: 1540,
+        duration_ms: 180000,
+        nps: 15.4,
+        bpm: 180.0,
+        key_count: 4,
+    };
+
+    let ratings = vec![BeatmapRating {
+        id: 1,
+        beatmap_hash: String::from("hash1"),
+        name: String::from("etterna"),
+        overall: 24.5,
+        stream: 22.0,
+        jumpstream: 24.0,
+        handstream: 20.0,
+        stamina: 23.0,
+        jackspeed: 15.0,
+        chordjack: 18.0,
+        technical: 12.0,
+    }];
+
+    std::sync::Arc::make_mut(&mut state.beatmapsets)
+        .push((set1, vec![BeatmapWithRatings::new(bm1, ratings)]));
+    state.selected_index = 0;
+
+    RenderState::Menu(state)
+}
+
+fn create_mock_result() -> RenderState {
+    RenderState::Result(GameResultData {
+        hit_stats: HitStats {
+            marv: 850,
+            perfect: 120,
+            great: 15,
+            good: 2,
+            bad: 0,
+            miss: 1,
+            ghost_tap: 5,
+        },
+        replay_data: replay::ReplayData::default(),
+        replay_result: replay::ReplayResult::new(), // Vide pour l'instant (graphes vides)
+        score: 985420,
+        accuracy: 99.12,
+        max_combo: 850,
+        beatmap_hash: Some(String::from("mock_hash")),
+        rate: 1.1,
+        judge_text: String::from("OD 8.5"),
+        show_settings: false,
+    })
+}

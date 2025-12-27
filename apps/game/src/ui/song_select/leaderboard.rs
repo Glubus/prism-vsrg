@@ -1,0 +1,165 @@
+//! Leaderboard display component.
+
+use std::path::Path;
+
+use crate::state::GameResultData;
+use crate::ui::song_select::leaderboard_card::LeaderboardCard;
+use database::replay_storage;
+use egui::ScrollArea;
+use engine::HitStats;
+use engine::NoteData;
+use engine::hit_window::HitWindow;
+use replay::{ReplayData, ReplayResult, simulate};
+
+#[derive(Clone)]
+pub struct ScoreCard {
+    pub timestamp: i64,
+    pub rate: f64,
+    pub replay_data: ReplayData,
+    pub total_notes: usize,
+    pub score: i32,
+    pub accuracy: f64,
+    pub max_combo: i32,
+    pub beatmap_hash: String,
+    /// Résultat de simulation (recalculé avec la chart cachée).
+    pub cached_result: Option<ReplayResult>,
+}
+
+impl ScoreCard {
+    pub fn from_replay(replay: &database::models::Replay, total_notes: usize) -> Option<Self> {
+        // Load replay data from compressed file (binary)
+        let replay_data = replay_storage::load_replay_from_path(Path::new(&replay.file_path))
+            .unwrap_or_else(|_| ReplayData::default());
+
+        Some(ScoreCard {
+            timestamp: replay.timestamp,
+            rate: replay.rate,
+            replay_data,
+            total_notes,
+            score: replay.score,
+            accuracy: replay.accuracy,
+            max_combo: replay.max_combo,
+            beatmap_hash: replay.beatmap_hash.clone(),
+            cached_result: None,
+        })
+    }
+
+    /// Simule le replay avec la chart et le hit window donnés.
+    /// Met à jour le cache de résultat.
+    pub fn simulate_with_chart(&mut self, chart: &[NoteData], hit_window: &HitWindow) {
+        let result = simulate(&self.replay_data, chart, hit_window);
+        self.cached_result = Some(result);
+    }
+}
+
+pub struct Leaderboard {
+    scores: Vec<ScoreCard>,
+}
+
+impl Leaderboard {
+    pub fn new() -> Self {
+        Self { scores: Vec::new() }
+    }
+
+    pub fn update_scores(&mut self, scores: Vec<ScoreCard>) {
+        self.scores = scores;
+    }
+
+    /// Simule tous les replays avec la chart et le hit window donnés.
+    pub fn simulate_all(&mut self, chart: &[NoteData], hit_window: &HitWindow) {
+        for score in &mut self.scores {
+            score.simulate_with_chart(chart, hit_window);
+        }
+    }
+
+    pub fn render(
+        &self,
+        ui: &mut egui::Ui,
+        _difficulty_name: Option<&str>,
+        hit_window: &HitWindow,
+        chart: Option<&[NoteData]>,
+    ) -> Option<GameResultData> {
+        let mut clicked_result = None;
+
+        if self.scores.is_empty() {
+            ui.centered_and_justified(|ui| {
+                ui.label("No Score Set");
+            });
+        } else {
+            ScrollArea::vertical()
+                .auto_shrink([false; 2])
+                .show(ui, |ui| {
+                    for (i, card) in self.scores.iter().take(10).enumerate() {
+                        // Utiliser le résultat simulé si disponible, sinon recalculer à la volée
+                        let (hit_stats, accuracy, max_combo, replay_result) =
+                            if let Some(ref result) = card.cached_result {
+                                (
+                                    result.hit_stats.clone(),
+                                    result.accuracy,
+                                    result.max_combo as i32,
+                                    result.clone(),
+                                )
+                            } else if let Some(chart) = chart {
+                                // Simuler à la volée si on a la chart
+                                let result = simulate(&card.replay_data, chart, hit_window);
+                                (
+                                    result.hit_stats.clone(),
+                                    result.accuracy,
+                                    result.max_combo as i32,
+                                    result,
+                                )
+                            } else {
+                                // Fallback: utiliser les données stockées
+                                (
+                                    HitStats::new(),
+                                    card.accuracy,
+                                    card.max_combo,
+                                    ReplayResult::new(),
+                                )
+                            };
+
+                        // Détecte si c'est un score practice depuis le replay_data
+                        let is_practice = card.replay_data.is_practice_mode;
+
+                        let response = LeaderboardCard::render(
+                            ui,
+                            i,
+                            accuracy,
+                            card.rate,
+                            card.timestamp,
+                            max_combo,
+                            &hit_stats,
+                            is_practice,
+                        );
+
+                        if response.clicked() {
+                            let judge_text = if is_practice {
+                                "Practice Replay".to_string()
+                            } else {
+                                "Replay View".to_string()
+                            };
+
+                            clicked_result = Some(GameResultData {
+                                hit_stats: hit_stats.clone(),
+                                replay_data: card.replay_data.clone(),
+                                replay_result,
+                                score: card.score as u32,
+                                accuracy,
+                                max_combo: max_combo as u32,
+                                beatmap_hash: Some(card.beatmap_hash.clone()),
+                                rate: card.rate,
+                                judge_text,
+                                show_settings: false,
+                            });
+                        }
+
+                        if i < self.scores.len().min(10).saturating_sub(1) {
+                            ui.add_space(6.0);
+                        }
+                    }
+                });
+        }
+
+        clicked_result
+    }
+}

@@ -1,0 +1,15 @@
+[package]
+name = "engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core engine types for Prism rhythm game: notes, hit windows, judgements"
+
+[dependencies]
+serde.workspace = true
+log.workspace = true
+ordered-float.workspace = true
+bytemuck.workspace = true
+rkyv.workspace = true
+rhythm-open-exchange.workspace = true
